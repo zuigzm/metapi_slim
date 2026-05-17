@@ -4,6 +4,7 @@ import { createRateLimitGuard } from '../../middleware/requestRateLimit.js';
 import {
   getOauthProviderDefaults,
   deleteOauthConnection,
+  deleteOauthConnectionsBatch,
   importOauthConnectionsFromNativeJson,
   getOauthSessionStatus,
   handleOauthCallback,
@@ -22,6 +23,7 @@ import {
   deleteOauthRouteUnit,
   updateOauthRouteUnit,
 } from '../../services/oauth/routeUnitService.js';
+import { startBackgroundTask, appendBackgroundTaskLog } from '../../services/backgroundTaskService.js';
 import { parseSiteProxyUrlInput } from '../../services/siteProxy.js';
 import {
   parseOauthConnectionRebindPayload,
@@ -375,6 +377,25 @@ export async function oauthRoutes(app: FastifyInstance) {
     },
   );
 
+  // Batch delete
+  app.post<{ Body: unknown }>(
+    '/api/oauth/connections/batch-delete',
+    { preHandler: [limitOauthConnectionMutate] },
+    async (request, reply) => {
+      const body = request.body as Record<string, unknown> || {};
+      const rawIds = Array.isArray(body.accountIds) ? body.accountIds : [];
+      const accountIds: number[] = [];
+      for (const raw of rawIds) {
+        const id = typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : null;
+        if (id !== null) accountIds.push(id);
+      }
+      if (accountIds.length === 0) {
+        return reply.code(400).send({ message: 'accountIds must be a non-empty array of positive integers' });
+      }
+      return await deleteOauthConnectionsBatch(accountIds);
+    },
+  );
+
   app.post<{ Params: { accountId: string } }>(
     '/api/oauth/connections/:accountId/quota/refresh',
     { preHandler: [limitOauthConnectionMutate] },
@@ -435,21 +456,37 @@ export async function oauthRoutes(app: FastifyInstance) {
       if (normalizedProxyUrl.present && !normalizedProxyUrl.valid) {
         return reply.code(400).send({ message: 'invalid proxy url' });
       }
-      try {
-        return await importOauthConnectionsFromNativeJson({
-          data,
-          items: hasBatchItems ? parsedBody.data.items : undefined,
-          proxyUrl: normalizedProxyUrl.present ? normalizedProxyUrl.proxyUrl : undefined,
-          useSystemProxy: parsedBody.data.useSystemProxy,
-        });
-      } catch (error: any) {
-        const message = error?.message || 'oauth import failed';
-        if (error instanceof OauthImportValidationError) {
-          return reply.code(400).send({ message });
-        }
-        request.log.error({ err: error }, 'oauth import failed');
-        return reply.code(500).send({ message });
-      }
+
+      // Start async import task
+      const importInput = {
+        data,
+        items: hasBatchItems ? parsedBody.data.items : undefined,
+        proxyUrl: normalizedProxyUrl.present ? normalizedProxyUrl.proxyUrl : undefined,
+        useSystemProxy: parsedBody.data.useSystemProxy,
+      };
+      const { task } = startBackgroundTask(
+        {
+          type: 'oauth-import',
+          title: '导入 OAuth 连接',
+          dedupeKey: 'oauth-import',
+          successMessage: (t) => {
+            const r = t.result as { imported?: number; skipped?: number; failed?: number } | null;
+            return r ? `导入完成：成功 ${r.imported} 个，跳过 ${r.skipped} 个，失败 ${r.failed} 个` : '导入完成';
+          },
+          failureMessage: (t) => `导入失败：${t.error || 'unknown error'}`,
+        },
+        async () => {
+          try {
+            const result = await importOauthConnectionsFromNativeJson(importInput);
+            appendBackgroundTaskLog(task.id, `成功 ${result.imported} 个，跳过 ${result.skipped} 个，失败 ${result.failed} 个`);
+            return result;
+          } catch (error: any) {
+            appendBackgroundTaskLog(task.id, `导入失败：${error?.message || 'unknown error'}`);
+            throw error;
+          }
+        },
+      );
+      return { success: true, jobId: task.id };
     },
   );
 

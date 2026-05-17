@@ -80,8 +80,10 @@ describe('Accounts batch actions', () => {
       const checkboxA = root.root.find((node) => node.props['data-testid'] === 'account-select-1');
       const checkboxB = root.root.find((node) => node.props['data-testid'] === 'account-select-2');
       await act(async () => {
-        checkboxA.props.onChange({ target: { checked: true } });
-        checkboxB.props.onChange({ target: { checked: true } });
+        checkboxA.props.onChange({ target: { checked: true }, nativeEvent: { shiftKey: false }, stopPropagation: () => {} });
+      });
+      await act(async () => {
+        checkboxB.props.onChange({ target: { checked: true }, nativeEvent: { shiftKey: false }, stopPropagation: () => {} });
       });
 
       const batchButton = root.root.find((node) => node.props['data-testid'] === 'accounts-batch-refresh-balance');

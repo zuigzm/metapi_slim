@@ -948,6 +948,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  getAutoAggRules: () => request("/api/routes/auto-agg-rules"),
+  saveAutoAggRules: (rules: unknown) =>
+    request("/api/routes/auto-agg-rules", {
+      method: "PUT",
+      body: JSON.stringify(rules),
+    }),
   addChannel: (routeId: number, data: any) =>
     request(`/api/routes/${routeId}/channels`, {
       method: "POST",
@@ -1185,11 +1191,16 @@ export const api = {
     request(`/api/oauth/connections/${accountId}`, {
       method: "DELETE",
     }) as Promise<{ success: true }>,
+  batchDeleteOAuthConnections: (accountIds: number[]) =>
+    request("/api/oauth/connections/batch-delete", {
+      method: "POST",
+      body: JSON.stringify({ accountIds }),
+    }) as Promise<{ success: boolean; deleted: number; failed: number }>,
   importOAuthConnections: (data: Record<string, unknown>) =>
     request("/api/oauth/import", {
       method: "POST",
-      body: JSON.stringify(Array.isArray(data.items) ? data : { data }),
-    }) as Promise<OAuthImportResponse>,
+      body: JSON.stringify(data),
+    }) as Promise<{ success: boolean; jobId: string }>,
   createOAuthRouteUnit: (data: {
     accountIds: number[];
     name: string;

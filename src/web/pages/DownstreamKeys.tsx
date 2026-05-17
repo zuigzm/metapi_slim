@@ -8,6 +8,8 @@ import ResponsiveBatchActionBar from '../components/ResponsiveBatchActionBar.js'
 import { useToast } from '../components/Toast.js';
 import ModernSelect from '../components/ModernSelect.js';
 import { useIsMobile } from '../components/useIsMobile.js';
+import { Table } from "antd";
+import type { TableColumnsType } from "antd";
 import { tr } from '../i18n.js';
 import DownstreamKeyEditorModal, {
   TagInput,
@@ -480,6 +482,8 @@ export default function DownstreamKeys() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [showFilters, setShowFilters] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>(null);
   const [batchMetadataOpen, setBatchMetadataOpen] = useState(false);
@@ -1034,6 +1038,23 @@ export default function DownstreamKeys() {
   );
 
   const empty = !loading && visibleItems.length === 0;
+  const totalPages = Math.ceil(visibleItems.length / pageSize);
+  const paginatedItems = useMemo(() => {
+    if (visibleItems.length === 0) return [];
+    const start = (page - 1) * pageSize;
+    return visibleItems.slice(start, start + pageSize);
+  }, [visibleItems, page, pageSize]);
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchInput, status, groupFilter, activeTagFilters, tagMatchMode]);
+  // Keep page within bounds after data refresh
+  useEffect(() => {
+    const maxPage = Math.max(1, totalPages);
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [totalPages, page]);
 
   return (
     <div className="animate-fade-in" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1079,19 +1100,17 @@ export default function DownstreamKeys() {
         </div>
       </div>
 
-      {selectedIds.length > 0 ? (
-        <ResponsiveBatchActionBar
-          isMobile={isMobile}
-          info={`已选 ${selectedIds.length} 个密钥`}
-          infoStyle={{ color: 'var(--color-text-primary)' }}
-        >
-          <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={openBatchMetadata} disabled={batchActionLoading}>{isMobile ? '归类/标签' : '批量归类/标签'}</button>
-          <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量启用', selectedIds)} disabled={batchActionLoading}>{isMobile ? '启用' : '批量启用'}</button>
-          <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量禁用', selectedIds)} disabled={batchActionLoading}>{isMobile ? '禁用' : '批量禁用'}</button>
-          <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量清零用量', selectedIds)} disabled={batchActionLoading}>{isMobile ? '清零' : '批量清零用量'}</button>
-          <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'batch', ids: [...selectedIds] })} disabled={batchActionLoading}>{isMobile ? '删除' : '批量删除'}</button>
-        </ResponsiveBatchActionBar>
-      ) : null}
+      <ResponsiveBatchActionBar
+        isMobile={isMobile}
+        info={`已选 ${selectedIds.length} 个密钥`}
+        infoStyle={{ color: 'var(--color-text-primary)' }}
+      >
+        <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={openBatchMetadata} disabled={batchActionLoading || selectedIds.length === 0}>{isMobile ? '归类/标签' : '批量归类/标签'}</button>
+        <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量启用', selectedIds)} disabled={batchActionLoading || selectedIds.length === 0}>{isMobile ? '启用' : '批量启用'}</button>
+        <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量禁用', selectedIds)} disabled={batchActionLoading || selectedIds.length === 0}>{isMobile ? '禁用' : '批量禁用'}</button>
+        <button className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => void batchRun('批量清零用量', selectedIds)} disabled={batchActionLoading || selectedIds.length === 0}>{isMobile ? '清零' : '批量清零用量'}</button>
+        <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'batch', ids: [...selectedIds] })} disabled={batchActionLoading || selectedIds.length === 0}>{isMobile ? '删除' : '批量删除'}</button>
+      </ResponsiveBatchActionBar>
 
       <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1127,144 +1146,183 @@ export default function DownstreamKeys() {
 
         {loading ? (
           <div className="skeleton" style={{ width: '100%', height: 280, borderRadius: 'var(--radius-sm)' }} />
-        ) : empty ? (
-          <div className="empty-state" style={{ padding: 40 }}>
-            <div className="empty-state-title">暂无下游密钥</div>
-            <div className="empty-state-desc">可以先新增一条密钥，或调整筛选条件查看已有数据。</div>
-          </div>
         ) : isMobile ? (
-          <div className="mobile-card-list">
-            {visibleItems.map((row) => {
-              const loadingToggle = !!rowLoading[`toggle-${row.id}`];
-              const loadingReset = !!rowLoading[`reset-${row.id}`];
-              const loadingDelete = !!rowLoading[`delete-${row.id}`];
-              const checked = selectedIds.includes(row.id);
-              return (
-                <MobileCard
-                  key={row.id}
-                  title={row.name}
-                  headerActions={(
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StatusBadge enabled={row.enabled} />
-                      <input
-                        type="checkbox"
-                        aria-label={`选择 ${row.name}`}
-                        checked={checked}
-                        onChange={(e) => toggleSelection(row.id, e.target.checked)}
-                      />
-                    </div>
-                  )}
-                  footerActions={(
-                    <>
-                      <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                      <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
-                      <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
-                      <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
-                      <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
-                    </>
-                  )}
-                >
-                  <MobileField
-                    label="密钥"
-                    value={(
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-muted)' }}>{row.keyMasked}</span>
-                        <DownstreamKeyCopyIconButton fullKey={row.key} />
-                      </span>
+          <>
+            <div className="mobile-card-list">
+              {paginatedItems.map((row) => {
+                const loadingToggle = !!rowLoading[`toggle-${row.id}`];
+                const loadingReset = !!rowLoading[`reset-${row.id}`];
+                const loadingDelete = !!rowLoading[`delete-${row.id}`];
+                const checked = selectedIds.includes(row.id);
+                return (
+                  <MobileCard
+                    key={row.id}
+                    title={row.name}
+                    headerActions={(
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StatusBadge enabled={row.enabled} />
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${row.name}`}
+                          checked={checked}
+                          onChange={(e) => toggleSelection(row.id, e.target.checked)}
+                        />
+                      </div>
                     )}
-                    stacked
-                  />
-                  {row.description ? <MobileField label="备注" value={row.description} stacked /> : null}
-                  <MobileField label="主分组" value={row.groupName || '未分组'} />
-                  <MobileField label="标签" value={summarizeTags(row.tags || [])} stacked />
-                  <MobileField label="模型" value={summarizeModelLimit(row.supportedModels || [])} stacked />
-                  <MobileField label="群组" value={summarizeRouteLimit(row.allowedRouteIds || [], routeMap)} stacked />
-                  <MobileField label="倍率" value={summarizeSiteWeightMultipliers(row.siteWeightMultipliers || {})} stacked />
-                  <MobileField label="额度" value={`${row.maxRequests == null ? '不限' : row.maxRequests.toLocaleString()} / ${row.maxCost == null ? '成本不限' : formatMoney(row.maxCost)}`} stacked />
-                  <MobileField label="用量" value={`${(row.rangeUsage?.totalRequests || 0).toLocaleString()} 请求 · ${formatCompactTokens(row.rangeUsage?.totalTokens || 0)}`} stacked />
-                  <MobileField label="最近使用" value={formatIso(row.lastUsedAt)} stacked />
-                </MobileCard>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 42 }}>
-                    <input type="checkbox" checked={allVisibleSelected} onChange={(e) => toggleSelectAllVisible(e.target.checked)} />
-                  </th>
-                  <th>密钥信息</th>
-                  <th>授权范围</th>
-                  <th style={{ textAlign: 'right' }}>额度</th>
-                  <th style={{ textAlign: 'right' }}>用量</th>
-                  <th>最近使用</th>
-                  <th style={{ textAlign: 'right' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.map((row) => {
-                  const loadingToggle = !!rowLoading[`toggle-${row.id}`];
-                  const loadingReset = !!rowLoading[`reset-${row.id}`];
-                  const loadingDelete = !!rowLoading[`delete-${row.id}`];
-                  const checked = selectedIds.includes(row.id);
-                  return (
-                    <tr key={row.id} className={`row-selectable ${checked ? 'row-selected' : ''}`.trim()} onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={checked} onChange={(e) => toggleSelection(row.id, e.target.checked)} />
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                          <strong style={{ color: 'var(--color-text-primary)' }}>{row.name}</strong>
-                          <StatusBadge enabled={row.enabled} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                    footerActions={(
+                      <>
+                        <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
+                        <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
+                        <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
+                        <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
+                        <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
+                      </>
+                    )}
+                  >
+                    <MobileField
+                      label="密钥"
+                      value={(
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-muted)' }}>{row.keyMasked}</span>
                           <DownstreamKeyCopyIconButton fullKey={row.key} />
-                        </div>
-                        {row.description ? <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', maxWidth: 320 }}>{row.description}</div> : null}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                          <span className={`badge ${row.groupName ? 'badge-info' : 'badge-muted'}`} style={{ fontSize: 11 }}>
-                            {row.groupName ? `主分组 · ${row.groupName}` : '未分组'}
-                          </span>
-                          <TagChips tags={row.tags || []} maxVisible={3} />
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>模型：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeModelLimit(row.supportedModels || [])}</span></div>
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>群组：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeRouteLimit(row.allowedRouteIds || [], routeMap)}</span></div>
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>标签：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeTags(row.tags || [])}</span></div>
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>倍率：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeSiteWeightMultipliers(row.siteWeightMultipliers || {})}</span></div>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        <div style={{ color: 'var(--color-text-primary)', fontWeight: 700 }}>{row.maxRequests == null ? '不限' : row.maxRequests.toLocaleString()}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.maxCost == null ? '成本不限' : `成本 ${formatMoney(row.maxCost)}`}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.expiresAt ? `到期 ${formatIso(row.expiresAt)}` : '永久有效'}</div>
-                      </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        <div style={{ color: 'var(--color-text-primary)', fontWeight: 700 }}>{formatCompactTokens(row.rangeUsage?.totalTokens || 0)}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{(row.rangeUsage?.totalRequests || 0).toLocaleString()} 请求</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.rangeUsage?.successRate == null ? '--' : `成功率 ${row.rangeUsage.successRate}%`}</div>
-                      </td>
-                      <td style={{ color: 'var(--color-text-muted)' }}>{formatIso(row.lastUsedAt)}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
-                          <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                          <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
-                          <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
-                          <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
-                          <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </span>
+                      )}
+                      stacked
+                    />
+                    {row.description ? <MobileField label="备注" value={row.description} stacked /> : null}
+                    <MobileField label="主分组" value={row.groupName || '未分组'} />
+                    <MobileField label="标签" value={summarizeTags(row.tags || [])} stacked />
+                    <MobileField label="模型" value={summarizeModelLimit(row.supportedModels || [])} stacked />
+                    <MobileField label="群组" value={summarizeRouteLimit(row.allowedRouteIds || [], routeMap)} stacked />
+                    <MobileField label="倍率" value={summarizeSiteWeightMultipliers(row.siteWeightMultipliers || {})} stacked />
+                    <MobileField label="额度" value={`${row.maxRequests == null ? '不限' : row.maxRequests.toLocaleString()} / ${row.maxCost == null ? '成本不限' : formatMoney(row.maxCost)}`} stacked />
+                    <MobileField label="用量" value={`${(row.rangeUsage?.totalRequests || 0).toLocaleString()} 请求 · ${formatCompactTokens(row.rangeUsage?.totalTokens || 0)}`} stacked />
+                    <MobileField label="最近使用" value={formatIso(row.lastUsedAt)} stacked />
+                  </MobileCard>
+                );
+              })}
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '12px 0' }}>
+                <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="btn btn-ghost" style={{ fontSize: 13 }}>上一页</button>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{page} / {totalPages}</span>
+                <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="btn btn-ghost" style={{ fontSize: 13 }}>下一页</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <Table<any>
+            rowKey="id"
+            dataSource={paginatedItems}
+            columns={[
+            {
+              title: '密钥信息',
+              key: 'info',
+              render: (_: unknown, row: any) => (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <strong style={{ color: 'var(--color-text-primary)' }}>{row.name}</strong>
+                    <StatusBadge enabled={row.enabled} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-muted)' }}>{row.keyMasked}</span>
+                    <DownstreamKeyCopyIconButton fullKey={row.key} />
+                  </div>
+                  {row.description ? <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', maxWidth: 320 }}>{row.description}</div> : null}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    <span className={`badge ${row.groupName ? 'badge-info' : 'badge-muted'}`} style={{ fontSize: 11 }}>
+                      {row.groupName ? `主分组 · ${row.groupName}` : '未分组'}
+                    </span>
+                    <TagChips tags={row.tags || []} maxVisible={3} />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              title: '授权范围',
+              key: 'scope',
+              render: (_: unknown, row: any) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>模型：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeModelLimit(row.supportedModels || [])}</span></div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>群组：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeRouteLimit(row.allowedRouteIds || [], routeMap)}</span></div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>标签：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeTags(row.tags || [])}</span></div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>倍率：<span style={{ color: 'var(--color-text-primary)' }}>{summarizeSiteWeightMultipliers(row.siteWeightMultipliers || {})}</span></div>
+                </div>
+              ),
+            },
+            {
+              title: '额度',
+              key: 'quota',
+              className: 'downstream-quota-col',
+              render: (_: unknown, row: any) => (
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <div style={{ color: 'var(--color-text-primary)', fontWeight: 700 }}>{row.maxRequests == null ? '不限' : row.maxRequests.toLocaleString()}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.maxCost == null ? '成本不限' : `成本 ${formatMoney(row.maxCost)}`}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.expiresAt ? `到期 ${formatIso(row.expiresAt)}` : '永久有效'}</div>
+                </div>
+              ),
+            },
+            {
+              title: '用量',
+              key: 'usage',
+              className: 'downstream-usage-col',
+              render: (_: unknown, row: any) => (
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <div style={{ color: 'var(--color-text-primary)', fontWeight: 700 }}>{formatCompactTokens(row.rangeUsage?.totalTokens || 0)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{(row.rangeUsage?.totalRequests || 0).toLocaleString()} 请求</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>{row.rangeUsage?.successRate == null ? '--' : `成功率 ${row.rangeUsage.successRate}%`}</div>
+                </div>
+              ),
+            },
+            {
+              title: '最近使用',
+              key: 'lastUsedAt',
+              render: (_: unknown, row: any) => <span style={{ color: 'var(--color-text-muted)' }}>{formatIso(row.lastUsedAt)}</span>,
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              className: 'downstream-actions-cell',
+              render: (_: unknown, row: any) => {
+                const loadingToggle = !!rowLoading[`toggle-${row.id}`];
+                const loadingReset = !!rowLoading[`reset-${row.id}`];
+                const loadingDelete = !!rowLoading[`delete-${row.id}`];
+                return (
+                  <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
+                    <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
+                    <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
+                    <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
+                    <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
+                    <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
+                  </div>
+                );
+              },
+            },
+            ]}
+            pagination={false}
+            rowSelection={{
+              selectedRowKeys: selectedIds,
+              onSelect: (record: any, selected: boolean) => {
+                toggleSelection(record.id, selected);
+              },
+              onSelectAll: (selected: boolean, _: any[]) => {
+                toggleSelectAllVisible(selected);
+              },
+              selections: true,
+            }}
+            onRow={(record) => ({
+              onClick: () => { setSelectedId(record.id); setDrawerOpen(true); },
+              style: { cursor: 'pointer' },
+            })}
+            size="small"
+            tableLayout="fixed"
+            locale={{ emptyText: (
+              <div className="empty-state" style={{ padding: 40 }}>
+                <div className="empty-state-title">暂无下游密钥</div>
+                <div className="empty-state-desc">可以先新增一条密钥，或调整筛选条件查看已有数据。</div>
+              </div>
+            )}}
+          />
         )}
       </div>
 
