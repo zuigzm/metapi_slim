@@ -13,6 +13,7 @@ import { useLocation } from 'react-router-dom';
 import { Table } from 'antd';
 import type { TableColumnsType, TablePaginationConfig } from 'antd';
 import CenteredModal from '../components/CenteredModal.js';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.js';
 import ResponsiveBatchActionBar from '../components/ResponsiveBatchActionBar.js';
 import ResponsiveFilterPanel from '../components/ResponsiveFilterPanel.js';
 import { MobileCard, MobileField } from '../components/MobileCard.js';
@@ -636,6 +637,13 @@ export default function OAuthManagement() {
   const [loaded, setLoaded] = useState(false);
   const [sessionFeedback, setSessionFeedback] = useState<SessionFeedback | null>(null);
   const [actionLoadingKey, setActionLoadingKey] = useState('');
+  const [batchActionLoading, setBatchActionLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<null | {
+    mode: 'single' | 'batch';
+    accountId?: number;
+    accountName?: string;
+    count?: number;
+  }>(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -1232,11 +1240,14 @@ export default function OAuthManagement() {
 
   const handleDeleteSelected = async () => {
     if (selectedConnectionIds.length === 0) return;
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      const confirmed = window.confirm(`确定要删除选中的 ${selectedConnectionIds.length} 个 OAuth 连接吗？`);
-      if (!confirmed) return;
-    }
-    setActionLoadingKey('delete:selected');
+    setDeleteConfirm({ mode: 'batch', count: selectedConnectionIds.length });
+  };
+
+  const confirmBatchDelete = async () => {
+    const target = deleteConfirm;
+    if (!target || target.mode !== 'batch') return;
+    setDeleteConfirm(null);
+    setBatchActionLoading(true);
     try {
       const result = await api.batchDeleteOAuthConnections(selectedConnectionIds);
       await loadConnections();
@@ -1249,7 +1260,7 @@ export default function OAuthManagement() {
     } catch (error: any) {
       setSessionError(error?.message || '批量删除失败');
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -1269,7 +1280,7 @@ export default function OAuthManagement() {
 
   const handleRefreshSelected = async () => {
     if (selectedConnectionIds.length === 0) return;
-    setActionLoadingKey('quota:selected');
+    setBatchActionLoading(true);
     try {
       const result = await api.refreshOAuthConnectionQuotaBatch(selectedConnectionIds);
       await loadConnections();
@@ -1281,7 +1292,7 @@ export default function OAuthManagement() {
     } catch (error: any) {
       setSessionError(error?.message || '批量刷新额度失败');
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -1576,7 +1587,7 @@ export default function OAuthManagement() {
     const routeUnitId = selectedRouteUnitParticipation.routeUnitId ?? selectedRouteUnitParticipation.id;
     if (!routeUnitId) return;
 
-    setActionLoadingKey('route-unit:delete');
+    setBatchActionLoading(true);
     try {
       const routeUnitFeedback = {
         action: 'deleted' as const,
@@ -1603,7 +1614,7 @@ export default function OAuthManagement() {
       toast.error(message);
       setSessionError(message);
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -2196,6 +2207,45 @@ export default function OAuthManagement() {
         }
       />
 
+      <ResponsiveBatchActionBar isMobile={isMobile} info={`已选 ${selectedConnectionIds.length} 项`} desktopStyle={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            className="btn btn-ghost oauth-outline-button"
+            onClick={handleRefreshSelected}
+            disabled={batchActionLoading || selectedConnectionIds.length === 0}
+          >
+            {batchActionLoading ? '刷新中...' : '批量刷新额度'}
+          </button>
+          {canMergeSelectedIntoRouteUnit ? (
+            <button
+              type="button"
+              className="btn btn-ghost oauth-outline-button"
+              onClick={openRouteUnitModal}
+              disabled={selectedConnectionIds.length === 0}
+            >
+              合并参与路由
+            </button>
+          ) : null}
+          {canSplitSelectedRouteUnit ? (
+            <button
+              type="button"
+              className="btn btn-ghost oauth-outline-button"
+              onClick={handleDeleteSelectedRouteUnit}
+              disabled={batchActionLoading || selectedConnectionIds.length === 0}
+            >
+              {batchActionLoading ? '拆分中...' : '拆回单体'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-link btn-link-danger"
+            onClick={() => setDeleteConfirm({ mode: 'batch', count: selectedConnectionIds.length })}
+            disabled={batchActionLoading || selectedConnectionIds.length === 0}
+          >
+            {batchActionLoading ? '删除中...' : '批量删除'}
+          </button>
+        </ResponsiveBatchActionBar>
+
       <div className="card oauth-workbench-card">
         <div className="oauth-workbench-head">
           <div>
@@ -2205,46 +2255,6 @@ export default function OAuthManagement() {
             </div>
           </div>
         </div>
-
-        {selectedConnectionIds.length > 0 ? (
-          <ResponsiveBatchActionBar isMobile={isMobile} info={`已选 ${selectedConnectionIds.length} 项`} desktopStyle={{ marginBottom: 12 }}>
-            <button
-              type="button"
-              className="btn btn-ghost oauth-outline-button"
-              onClick={handleRefreshSelected}
-              disabled={actionLoadingKey === 'quota:selected'}
-            >
-              {actionLoadingKey === 'quota:selected' ? '刷新中...' : '批量刷新额度'}
-            </button>
-            {canMergeSelectedIntoRouteUnit ? (
-              <button
-                type="button"
-                className="btn btn-ghost oauth-outline-button"
-                onClick={openRouteUnitModal}
-              >
-                合并参与路由
-              </button>
-            ) : null}
-            {canSplitSelectedRouteUnit ? (
-              <button
-                type="button"
-                className="btn btn-ghost oauth-outline-button"
-                onClick={handleDeleteSelectedRouteUnit}
-                disabled={actionLoadingKey === 'route-unit:delete'}
-              >
-                {actionLoadingKey === 'route-unit:delete' ? '拆分中...' : '拆回单体'}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-link btn-link-danger"
-              onClick={handleDeleteSelected}
-              disabled={actionLoadingKey === 'delete:selected'}
-            >
-              {actionLoadingKey === 'delete:selected' ? '删除中...' : '批量删除'}
-            </button>
-          </ResponsiveBatchActionBar>
-        ) : null}
 
         {!loaded ? (
           <div className="empty-state oauth-empty-state">
@@ -2709,6 +2719,31 @@ export default function OAuthManagement() {
           />
         </div>
       </CenteredModal>
+
+      <DeleteConfirmModal
+        open={Boolean(deleteConfirm)}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmBatchDelete}
+        title="确认删除 OAuth 连接"
+        confirmText="确认删除"
+        loading={batchActionLoading}
+        description={
+          deleteConfirm?.mode === 'single' ? (
+            <>
+              确定要删除连接{' '}
+              <strong>
+                {deleteConfirm.accountName || `#${deleteConfirm.accountId}`}
+              </strong>{' '}
+              吗？
+            </>
+          ) : (
+            <>
+              确定要删除选中的 <strong>{deleteConfirm?.count || 0}</strong>{' '}
+              个 OAuth 连接吗？
+            </>
+          )
+        }
+      />
     </div>
   );
 }
