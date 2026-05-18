@@ -3261,19 +3261,26 @@ export default function Accounts() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 500 }}>{displayName}</span>
                             {siteUrl && (
-                              <a
-                                href={siteUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="badge-link"
-                              >
-                                <span className="badge badge-info" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                  访问官网
-                                </span>
-                              </a>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {username && (
+                                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)', fontWeight: 500 }}>
+                                    {username}
+                                  </span>
+                                )}
+                                <a
+                                  href={siteUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="badge-link"
+                                >
+                                  <span className="badge badge-info" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                    访问官网
+                                  </span>
+                                </a>
+                              </div>
                             )}
                           </div>
                         );
