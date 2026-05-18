@@ -146,6 +146,54 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Detect wildcard conflicts between a new pattern and existing rules.
+ * Returns a description string if conflict detected, null otherwise.
+ *
+ * Conflict cases:
+ * - new="glm-5*" existing="glm-5.1*" → new is shadowed by existing (glm-5.1* is more specific)
+ * - new="glm-5.1*" existing="glm-5*" → existing would be shadowed by new (new is more specific)
+ * - new="glm-5*" existing="glm-5*" with same displayName → duplicate (handled elsewhere)
+ */
+function detectWildcardConflict(
+  newPattern: string,
+  existingRules: { pattern: string; displayName: string }[],
+): string | null {
+  const newBase = newPattern.replace(/\*+$/, "");
+  const newHasStar = newPattern.includes("*");
+  const newPrefixWithStar = newBase + "*";
+
+  for (const existing of existingRules) {
+    const existingBase = existing.pattern.replace(/\*+$/, "");
+    const existingHasStar = existing.pattern.includes("*");
+
+    if (newHasStar && existingHasStar) {
+      // Both are wildcard patterns — check for prefix overlap
+      if (newBase.startsWith(existingBase) || existingBase.startsWith(newBase)) {
+        // One is a prefix of the other — potential conflict
+        if (newBase === existingBase) continue; // same base, not a conflict (diff versions)
+        // More specific pattern wins
+        if (newBase.length > existingBase.length) {
+          return `「${existing.pattern}」会被「${newPattern}」覆盖，匹配「${newPattern}」的模型不会再参与「${existing.pattern}」的匹配`;
+        } else {
+          return `「${newPattern}」会被「${existing.pattern}」覆盖，匹配「${existing.pattern}」的模型范围更大`;
+        }
+      }
+    } else if (newHasStar && !existingHasStar) {
+      // New is wildcard, existing is exact — check if existing starts with newBase
+      if (existingBase.startsWith(newBase)) {
+        return `精确模式「${existing.pattern}」会被「${newPattern}」覆盖，请确认是否继续`;
+      }
+    } else if (!newHasStar && existingHasStar) {
+      // New is exact, existing is wildcard — check if new starts with existingBase
+      if (newBase.startsWith(existingBase)) {
+        return `通配符「${existing.pattern}」会被精确模式「${newPattern}」覆盖，请确认是否继续`;
+      }
+    }
+  }
+  return null;
+}
+
 export function DesktopDetailPanelPresence({
   open,
   children,
@@ -583,13 +631,29 @@ export default function TokenRoutes() {
     [routeSummaries, missingTokenModelsByName, missingTokenGroupModelsByName],
   );
 
-  const visibleRouteRows = useMemo(
-    () =>
-      showZeroChannelRoutes
-        ? [...routeSummaries, ...zeroChannelPlaceholderRoutes]
-        : routeSummaries,
-    [routeSummaries, showZeroChannelRoutes, zeroChannelPlaceholderRoutes],
-  );
+  const visibleRouteRows = useMemo(() => {
+      const aggregatedRouteIds = new Set(
+        routeSummaries
+          .filter(
+            (r) =>
+              r.routeMode === "explicit_group" &&
+              Array.isArray(r.sourceRouteIds),
+          )
+          .flatMap((r) => r.sourceRouteIds!),
+      );
+      const filtered = routeSummaries.filter(
+        (route) =>
+          // Include explicit_group routes (群组本身)
+          route.routeMode === "explicit_group" ||
+          // Include non-exact routes (pattern 模式路由)
+          !isRouteExactModel(route) ||
+          // For exact model routes: only show if NOT already in any group
+          !aggregatedRouteIds.has(route.id),
+      );
+      return showZeroChannelRoutes
+        ? [...filtered, ...zeroChannelPlaceholderRoutes]
+        : filtered;
+    }, [routeSummaries, showZeroChannelRoutes, zeroChannelPlaceholderRoutes]);
 
   const canSaveRoute = useMemo(() => {
     if (saving) return false;
@@ -625,17 +689,29 @@ export default function TokenRoutes() {
   }, [showManual, modelCandidates, routeSummaries]);
 
   const exactSourceRouteOptions = useMemo(
-    () => routeSummaries.filter((route) => isRouteExactModel(route)),
-    [routeSummaries],
+    () =>
+      visibleRouteRows.filter(
+        (route) =>
+          isRouteExactModel(route) &&
+          route.routeMode !== "explicit_group",
+      ),
+    [visibleRouteRows],
   );
 
   const autoAggFormMatchedCount = useMemo(() => {
     const pattern = autoAggFormPattern.trim();
     if (!pattern || getModelPatternError(pattern)) return 0;
-    return exactSourceRouteOptions.filter((route) =>
-      matchesModelPattern(route.modelPattern, pattern),
+    return exactSourceRouteOptions.filter(
+      (route) =>
+        matchesModelPattern(route.modelPattern, pattern) &&
+        !routeSummaries.some(
+          (r) =>
+            r.routeMode === "explicit_group" &&
+            Array.isArray(r.sourceRouteIds) &&
+            r.sourceRouteIds.includes(route.id),
+        ),
     ).length;
-  }, [autoAggFormPattern, exactSourceRouteOptions]);
+  }, [autoAggFormPattern, exactSourceRouteOptions, routeSummaries]);
 
   const resetRouteForm = () => {
     setForm(EMPTY_ROUTE_FORM);
@@ -721,25 +797,32 @@ export default function TokenRoutes() {
   };
 
   const handleAutoAggCreate = async () => {
-    const rulesToProcess = autoAggEditingId
-      ? autoAggRules.map((r) =>
-          r.id === autoAggEditingId
-            ? {
-                ...r,
-                pattern: autoAggFormPattern.trim(),
-                displayName: autoAggFormDisplayName.trim(),
-              }
-            : r,
-        )
-      : [
-          ...autoAggRules,
-          {
-            id: `rule-${Date.now()}`,
-            pattern: autoAggFormPattern.trim(),
-            displayName: autoAggFormDisplayName.trim(),
-          },
-        ];
+    // Build the full rules list from current state
+    const formPattern = autoAggFormPattern.trim();
+    const formDisplayName = autoAggFormDisplayName.trim();
 
+    let rulesToProcess: Array<{ id: string; pattern: string; displayName: string }>;
+
+    if (autoAggEditingId) {
+      // Editing an existing rule: apply form values to that rule, keep others unchanged
+      rulesToProcess = autoAggRules.map((r) =>
+        r.id === autoAggEditingId
+          ? { ...r, pattern: formPattern, displayName: formDisplayName }
+          : r,
+      );
+    } else {
+      // Not editing: only add form as new rule if both fields are filled
+      rulesToProcess = [...autoAggRules];
+      if (formPattern && formDisplayName) {
+        rulesToProcess.push({
+          id: `rule-${Date.now()}`,
+          pattern: formPattern,
+          displayName: formDisplayName,
+        });
+      }
+    }
+
+    // Validate all rules before proceeding
     for (const rule of rulesToProcess) {
       if (!rule.pattern || !rule.displayName) {
         toast.error("每条规则都需要填写通配符和对外模型名");
@@ -754,22 +837,35 @@ export default function TokenRoutes() {
       }
     }
 
+    if (rulesToProcess.length === 0) {
+      toast.error("请先添加至少一条聚合规则");
+      return;
+    }
+
     setAutoAggSaving(true);
     let createdCount = 0;
     let updatedCount = 0;
 
     try {
       for (const rule of rulesToProcess) {
-        const matchedIds = exactSourceRouteOptions
-          .filter((route) =>
-            matchesModelPattern(route.modelPattern, rule.pattern),
-          )
-          .map((route) => route.id);
+        // Only match exact routes that are NOT already in any explicit_group route's sourceRouteIds
+        const matchedRoutes = exactSourceRouteOptions.filter(
+          (route) =>
+            matchesModelPattern(route.modelPattern, rule.pattern) &&
+            !routeSummaries.some(
+              (r) =>
+                r.routeMode === "explicit_group" &&
+                Array.isArray(r.sourceRouteIds) &&
+                r.sourceRouteIds.includes(route.id),
+            ),
+        );
 
-        if (matchedIds.length === 0) {
-          toast.error(`规则「${rule.displayName}」没有匹配到任何精确模型路由`);
+        if (matchedRoutes.length === 0) {
+          toast.error(`规则「${rule.displayName}」没有匹配到任何剩余的精确模型路由`);
           continue;
         }
+
+        const matchedIds = matchedRoutes.map((route) => route.id);
 
         const existingGroup = routeSummaries.find(
           (r) =>
@@ -778,8 +874,11 @@ export default function TokenRoutes() {
         );
 
         if (existingGroup) {
+          // Merge: add newly matched IDs to existing group's sourceRouteIds
+          const existingIds = new Set(existingGroup.sourceRouteIds || []);
+          matchedIds.forEach((id) => existingIds.add(id));
           await api.updateRoute(existingGroup.id, {
-            sourceRouteIds: matchedIds,
+            sourceRouteIds: Array.from(existingIds),
           });
           updatedCount++;
         } else {
@@ -799,14 +898,13 @@ export default function TokenRoutes() {
       }
 
       setAutoAggOpen(false);
-      setAutoAggRules([]);
-      api.saveAutoAggRules([]).catch(() => {});
+      // Keep rules in DB and UI — they persist across sessions for future re-aggregation
       setAutoAggEditingId(null);
       setAutoAggFormPattern("");
       setAutoAggFormDisplayName("");
       await load();
     } catch (e: any) {
-      toast.error(e.message || "操作失败");
+      toast.error(e?.message || "操作失败");
     } finally {
       setAutoAggSaving(false);
     }
@@ -2795,7 +2893,7 @@ export default function TokenRoutes() {
           open={autoAggOpen}
           onClose={() => {
             setAutoAggOpen(false);
-            setAutoAggRules([]);
+            // Don't clear rules — keep them persisted so they survive modal close/re-open
             setAutoAggEditingId(null);
             setAutoAggFormPattern("");
             setAutoAggFormDisplayName("");
@@ -2807,7 +2905,6 @@ export default function TokenRoutes() {
               <button
                 onClick={() => {
                   setAutoAggOpen(false);
-                  setAutoAggRules([]);
                   setAutoAggEditingId(null);
                   setAutoAggFormPattern("");
                   setAutoAggFormDisplayName("");
@@ -3017,9 +3114,22 @@ export default function TokenRoutes() {
                         toast.error("请填写通配符和对外模型名");
                         return;
                       }
-                      if (getModelPatternError(autoAggFormPattern.trim())) {
+                      const patternError = getModelPatternError(autoAggFormPattern.trim());
+                      if (patternError) {
                         toast.error("通配符格式错误");
                         return;
+                      }
+                      // Check wildcard conflicts with existing rules
+                      const otherRules = autoAggEditingId
+                        ? autoAggRules.filter((r) => r.id !== autoAggEditingId)
+                        : autoAggRules;
+                      const conflict = detectWildcardConflict(
+                        autoAggFormPattern.trim(),
+                        otherRules,
+                      );
+                      if (conflict) {
+                        toast.info(conflict);
+                        // Don't block adding, just warn
                       }
                       if (autoAggEditingId) {
                         setAutoAggRules((prev) => {

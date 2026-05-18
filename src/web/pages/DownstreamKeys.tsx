@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import CenteredModal from '../components/CenteredModal.js';
+import CenteredModal from '../components/AntdModalAdapter.js';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.js';
 import { MobileCard, MobileField } from '../components/MobileCard.js';
 import ResponsiveFilterPanel from '../components/ResponsiveFilterPanel.js';
@@ -1171,11 +1171,11 @@ export default function DownstreamKeys() {
                     )}
                     footerActions={(
                       <>
-                        <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                        <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
-                        <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
-                        <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
-                        <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
+                        <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
+                        <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); openEdit(row); }}>编辑</button>
+                        <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); void toggleEnabled(row); }} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
+                        <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); void resetUsage(row); }} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
+                        <button className="btn btn-link btn-link-danger" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ mode: 'single', item: row }); }} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
                       </>
                     )}
                   >
@@ -1289,11 +1289,11 @@ export default function DownstreamKeys() {
                 const loadingDelete = !!rowLoading[`delete-${row.id}`];
                 return (
                   <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
-                    <button className="btn btn-link" onClick={() => { setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
-                    <button className="btn btn-link" onClick={() => openEdit(row)}>编辑</button>
-                    <button className="btn btn-link" onClick={() => void toggleEnabled(row)} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
-                    <button className="btn btn-link" onClick={() => void resetUsage(row)} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
-                    <button className="btn btn-link btn-link-danger" onClick={() => setDeleteConfirm({ mode: 'single', item: row })} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
+                    <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); setSelectedId(row.id); setDrawerOpen(true); }}>查看</button>
+                    <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); openEdit(row); }}>编辑</button>
+                    <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); void toggleEnabled(row); }} disabled={loadingToggle}>{loadingToggle ? '处理中...' : (row.enabled ? '禁用' : '启用')}</button>
+                    <button className="btn btn-link" onClick={(e) => { e.stopPropagation(); void resetUsage(row); }} disabled={loadingReset}>{loadingReset ? '处理中...' : '清零用量'}</button>
+                    <button className="btn btn-link btn-link-danger" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ mode: 'single', item: row }); }} disabled={loadingDelete}>{loadingDelete ? '处理中...' : '删除'}</button>
                   </div>
                 );
               },
@@ -1349,12 +1349,12 @@ export default function DownstreamKeys() {
         maxWidth={720}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12 }}
         footer={(
-          <>
+          <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => { setBatchMetadataOpen(false); resetBatchMetadataForm(); }} disabled={batchActionLoading}>取消</button>
             <button className="btn btn-primary" onClick={() => void runBatchMetadata()} disabled={batchActionLoading}>
               {batchActionLoading ? <><span className="spinner spinner-sm" style={{ borderTopColor: 'white', borderColor: 'rgba(255,255,255,0.3)' }} /> 保存中...</> : '应用到所选密钥'}
             </button>
-          </>
+          </div>
         )}
       >
         <div className="info-tip" style={{ marginBottom: 0 }}>

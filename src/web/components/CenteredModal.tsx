@@ -65,18 +65,20 @@ export default function CenteredModal({
         style={{ maxWidth }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-header">
-          <div className="modal-title">{title}</div>
-          {showCloseButton ? (
-            <button
-              type="button"
-              className="modal-close-button"
-              onClick={onClose}
-              aria-label="关闭弹框"
-            >
-              ×
-            </button>
-          ) : null}
+        <div className="modal-fixed-header">
+          <div className="modal-header">
+            <div className="modal-title">{title}</div>
+            {showCloseButton ? (
+              <button
+                type="button"
+                className="modal-close-button"
+                onClick={onClose}
+                aria-label="关闭弹框"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="modal-body" style={bodyStyle}>
           {children}

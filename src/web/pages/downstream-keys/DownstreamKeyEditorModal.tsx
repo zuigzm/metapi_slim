@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import CenteredModal from '../../components/CenteredModal.js';
+import AntdModalAdapter from '../../components/AntdModalAdapter.js';
 import { generateDownstreamSkKey } from '../helpers/generateDownstreamSkKey.js';
 
 const PROXY_TOKEN_PREFIX = 'sk-';
@@ -346,21 +346,21 @@ export default function DownstreamKeyEditorModal({
   };
 
   return (
-    <CenteredModal
+    <AntdModalAdapter
       open={open}
       onClose={onClose}
       title={editingItem ? '编辑下游密钥' : '新增下游密钥'}
       maxWidth={860}
       bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       footer={(
-        <>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onClose} className="btn btn-ghost" disabled={saving}>取消</button>
           <button onClick={onSave} className="btn btn-primary" disabled={saving}>
             {saving
               ? <><span className="spinner spinner-sm" style={{ borderTopColor: 'white', borderColor: 'rgba(255,255,255,0.3)' }} /> 保存中...</>
               : (editingItem ? '保存修改' : '创建密钥')}
           </button>
-        </>
+        </div>
       )}
     >
       <div className="info-tip" style={{ marginBottom: 0 }}>
@@ -653,6 +653,6 @@ export default function DownstreamKeyEditorModal({
       <datalist id="downstream-group-suggestions">
         {groupSuggestions.map((group) => <option key={group} value={group} />)}
       </datalist>
-    </CenteredModal>
+    </AntdModalAdapter>
   );
 }

@@ -4291,6 +4291,15 @@ textarea {
   pointer-events: none;
 }
 
+.modal-fixed-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 20px 24px 0;
+}
+
 .modal-content {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
@@ -4300,6 +4309,8 @@ textarea {
   max-height: calc(100vh - 32px);
   margin: auto;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   animation: scale-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -4308,7 +4319,6 @@ textarea {
 }
 
 .modal-header {
-  padding: 20px 24px 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -4355,11 +4365,14 @@ textarea {
 }
 
 .modal-footer {
+  position: sticky;
+  bottom: 0;
   padding: 0 24px 20px;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+  background: var(--color-bg-card);
 }
 
 .site-created-summary,

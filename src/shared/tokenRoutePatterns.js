@@ -140,15 +140,32 @@ function isSafeRegexPatternBody(body) {
 }
 
 function matchesGlobPattern(model, pattern) {
+  const trimmedPattern = pattern.trim().toLowerCase();
+  const modelLower = model.toLowerCase();
+  const modelSegs = modelLower.split('/');
+  const lastSeg = modelSegs[modelSegs.length - 1];
+
+  if (!trimmedPattern.includes('/')) {
+    // No-slash pattern: match against the model's last path segment only (case-insensitive).
+    // This allows glm-5.1* to match z-ai/glm-5.1 (last seg = "glm-5.1" starts with "glm-5.1")
+    if (trimmedPattern.endsWith('*')) {
+      const prefix = trimmedPattern.slice(0, -1);
+      if (!prefix) return false;
+      return lastSeg.startsWith(prefix);
+    }
+    return lastSeg === trimmedPattern;
+  }
+
+  // Has-slash pattern: anchored segment-by-segment matching (case-insensitive, original behavior)
   let modelIndex = 0;
   let patternIndex = 0;
   let starIndex = -1;
   let matchIndex = 0;
 
-  while (modelIndex < model.length) {
-    const patternChar = pattern[patternIndex];
-    const modelChar = model[modelIndex];
-    if (patternChar === '*' ) {
+  while (modelIndex < modelLower.length) {
+    const patternChar = trimmedPattern[patternIndex];
+    const modelChar = modelLower[modelIndex];
+    if (patternChar === '*') {
       starIndex = patternIndex;
       matchIndex = modelIndex;
       patternIndex += 1;
@@ -167,11 +184,11 @@ function matchesGlobPattern(model, pattern) {
     modelIndex = matchIndex;
   }
 
-  while (pattern[patternIndex] === '*') {
+  while (trimmedPattern[patternIndex] === '*') {
     patternIndex += 1;
   }
 
-  return patternIndex === pattern.length;
+  return patternIndex === trimmedPattern.length;
 }
 
 function toArraySet(values) {
@@ -492,25 +509,28 @@ export function parseTokenRouteRegexPattern(pattern) {
 }
 
 export function matchesTokenRouteModelPattern(model, pattern) {
-  const normalized = (pattern || '').trim();
+  const normalized = (pattern || '').trim().toLowerCase();
+  const modelLower = (model || '').trim().toLowerCase();
   if (!normalized) return false;
-  if (normalized === model) return true;
+  if (normalized === modelLower) return true;
 
-  const cacheKey = `${model}\0${normalized}`;
+  const cacheKey = `${modelLower}\0${normalized}`;
   const cached = matchCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
   let result;
   if (isTokenRouteRegexPattern(normalized)) {
+    // Regex patterns are also treated case-insensitively for user convenience
     const parsed = parseTokenRouteRegexPattern(normalized);
-    result = !!parsed.regex && parsed.regex.test(model);
+    result = !!parsed.regex && parsed.regex.test(modelLower);
   } else {
-    result = matchesGlobPattern(model, normalized);
+    result = matchesGlobPattern(modelLower, normalized);
   }
 
   if (matchCache.size >= MATCH_CACHE_LIMIT) {
     matchCache.clear();
   }
+
   matchCache.set(cacheKey, result);
   return result;
 }

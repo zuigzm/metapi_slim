@@ -2968,6 +2968,7 @@ export default function Accounts() {
                                 <SiteBadgeLink
                                   siteId={a.site?.id}
                                   siteName={a.site?.name}
+                                  siteUrl={a.site?.url}
                                   badgeStyle={{ fontSize: 11 }}
                                 />
                               }
@@ -3153,31 +3154,11 @@ export default function Accounts() {
                       rowKey="id"
                       dataSource={paginatedAccounts}
                       columns={[
-                      {
-                        title: '连接名称',
-                        key: 'identity',
-                        render: (_: unknown, a: any) => {
-                          const connectionMode = resolveAccountCredentialMode(a);
-                          return (
-                            <div style={{ color: 'var(--color-text-primary)' }}>
-                              <div style={{ fontWeight: 600 }}>{resolveAccountDisplayName(a)}</div>
-                              <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                <span className={`badge ${connectionMode === 'apikey' ? 'badge-warning' : 'badge-info'}`} style={{ fontSize: 10 }}>
-                                  {connectionMode === 'apikey' ? 'API Key' : 'Session'}
-                                </span>
-                                {parseAccountExtraConfig(a)?.proxyUrl && (
-                                  <span className="badge badge-purple" style={{ fontSize: 10 }}>代理</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        },
-                      },
-                    {
+{
                       title: '官网',
                       key: 'site',
                       render: (_: unknown, a: any) => (
-                        <SiteBadgeLink siteId={a.site?.id} siteName={a.site?.name} badgeStyle={{ fontSize: 11 }} />
+                        <SiteBadgeLink siteId={a.site?.id} siteName={a.site?.name} siteUrl={a.site?.url} badgeStyle={{ fontSize: 11 }} />
                       ),
                     },
                     {
