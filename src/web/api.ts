@@ -809,7 +809,9 @@ export const api = {
   addAccount: (data: any) =>
     request("/api/accounts", { method: "POST", body: JSON.stringify(data) }),
   loginAccount: (data: {
-    siteId: number;
+    siteUrl: string;
+    siteName?: string;
+    platform?: string;
     username: string;
     password: string;
   }) =>

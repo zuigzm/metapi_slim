@@ -74,15 +74,30 @@ const ACCOUNT_SEGMENTS: Array<{
 
 const SITE_SELECT_SEARCH_PLACEHOLDER = "筛选站点（名称 / 平台 / URL）";
 
+const LOGIN_PLATFORM_OPTIONS = [
+  { value: "openai", label: "OpenAI" },
+  { value: "claude", label: "Claude" },
+  { value: "gemini", label: "Gemini" },
+  { value: "new-api", label: "NewAPI / 聚合面板" },
+  { value: "one-api", label: "OneAPI" },
+  { value: "anyrouter", label: "AnyRouter" },
+  { value: "done-hub", label: "DoneHub" },
+  { value: "one-hub", label: "OneHub" },
+  { value: "veloera", label: "Veloera" },
+  { value: "sub2api", label: "Sub2API" },
+  { value: "codex", label: "ChatGPT (OAuth)" },
+];
+
 function createLoginForm() {
-  return { siteId: 0, username: "", password: "" };
+  return { siteName: "", siteUrl: "", platform: "", username: "", password: "" };
 }
 
 function createTokenForm(credentialMode: "session" | "apikey" = "session") {
   return {
     siteId: 0 as number,
-    siteUrl: "",
     siteName: "",
+    siteUrl: "",
+    platform: "",
     username: "",
     accessToken: "",
     platformUserId: "",
@@ -403,11 +418,35 @@ export default function Accounts() {
     };
   }, []);
 
+  const handleSiteUrlBlur = async (formType: 'login' | 'token') => {
+    const url = formType === 'login' ? loginForm.siteUrl : tokenForm.siteUrl;
+    if (!url) return;
+    // Skip if user already manually selected a platform
+    const currentPlatform = formType === 'login' ? loginForm.platform : tokenForm.platform;
+    if (currentPlatform) return;
+    try {
+      const detected = await api.detectSite(url);
+      if (detected?.platform) {
+        if (formType === 'login') {
+          setLoginForm((f) => ({ ...f, platform: detected.platform }));
+        } else {
+          setTokenForm((f) => ({ ...f, platform: detected.platform }));
+        }
+      }
+    } catch {}
+  };
+
   const handleLoginAdd = async () => {
-    if (!loginForm.siteId || !loginForm.username || !loginForm.password) return;
+    if (!loginForm.siteUrl || !loginForm.username || !loginForm.password) return;
     setSaving(true);
     try {
-      const result = await api.loginAccount(loginForm);
+      const result = await api.loginAccount({
+        siteUrl: loginForm.siteUrl,
+        siteName: loginForm.siteName,
+        platform: loginForm.platform,
+        username: loginForm.username,
+        password: loginForm.password,
+      });
       if (result.success) {
         closeAddPanel();
         const msg = result.apiTokenFound
@@ -514,12 +553,27 @@ export default function Accounts() {
         resolvedSiteId = targetSite?.id;
       }
       if (!resolvedSiteId) {
-        // Try to create site if not found
+        // Try to create site if not found, use provided platform or auto-detect
+        let platformToUse = tokenForm.platform;
+        if (!platformToUse) {
+          // Auto-detect platform
+          try {
+            const detected = await api.detectSite(tokenForm.siteUrl);
+            if (detected?.platform) {
+              platformToUse = detected.platform;
+            }
+          } catch {}
+        }
+        if (!platformToUse) {
+          toast.error("站点验证错误：请手动选择平台类型");
+          setSaving(false);
+          return;
+        }
         try {
           const created = await api.addSite({
             url: tokenForm.siteUrl,
             name: tokenForm.siteName || tokenForm.siteUrl,
-            platform: "newapi",
+            platform: platformToUse,
           });
           resolvedSiteId = created?.id;
         } catch {}
@@ -1759,16 +1813,9 @@ export default function Accounts() {
                       placeholder="站点 URL（如 https://...）"
                       value={tokenForm.siteUrl}
                       onChange={(e) =>
-                        setTokenForm((f) => ({
-                          ...f,
-                          siteUrl: e.target.value,
-                          siteName:
-                            f.siteName ||
-                            sites.find((s: any) => s.url === e.target.value)
-                              ?.name ||
-                            "",
-                        }))
+                        setTokenForm((f) => ({ ...f, siteUrl: e.target.value }))
                       }
+                      onBlur={() => handleSiteUrlBlur('token')}
                       style={inputStyle}
                     />
                     <datalist id="site-url-suggestions">
@@ -1776,6 +1823,28 @@ export default function Accounts() {
                         <option key={site.id} value={site.url} />
                       ))}
                     </datalist>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        placeholder="站点名称"
+                        value={tokenForm.siteName}
+                        onChange={(e) =>
+                          setTokenForm((f) => ({ ...f, siteName: e.target.value }))
+                        }
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <select
+                        value={tokenForm.platform || ""}
+                        onChange={(e) =>
+                          setTokenForm((f) => ({ ...f, platform: e.target.value }))
+                        }
+                        style={{ ...inputStyle, width: 160 }}
+                      >
+                        <option value="">自动检测</option>
+                        {LOGIN_PLATFORM_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       placeholder="连接名称（可选）"
                       value={tokenForm.username}
@@ -2047,17 +2116,43 @@ export default function Accounts() {
                     <div className="info-tip">
                       输入目标站点的账号密码，将自动登录并获取访问令牌和 API Key
                     </div>
-                    <ModernSelect
-                      value={String(loginForm.siteId || 0)}
-                      onChange={(nextValue) => {
-                        const nextSiteId = Number.parseInt(nextValue, 10) || 0;
-                        setLoginForm((f) => ({ ...f, siteId: nextSiteId }));
-                      }}
-                      options={siteSelectOptions}
-                      placeholder="选择站点"
-                      searchable
-                      searchPlaceholder={SITE_SELECT_SEARCH_PLACEHOLDER}
+                    <input
+                      list="site-url-suggestions"
+                      placeholder="站点 URL（如 https://...）"
+                      value={loginForm.siteUrl}
+                      onChange={(e) =>
+                        setLoginForm((f) => ({ ...f, siteUrl: e.target.value }))
+                      }
+                      onBlur={() => handleSiteUrlBlur('login')}
+                      style={inputStyle}
                     />
+                    <datalist id="site-url-suggestions">
+                      {sites.map((site: any) => (
+                        <option key={site.id} value={site.url} />
+                      ))}
+                    </datalist>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        placeholder="站点名称"
+                        value={loginForm.siteName}
+                        onChange={(e) =>
+                          setLoginForm((f) => ({ ...f, siteName: e.target.value }))
+                        }
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <select
+                        value={loginForm.platform}
+                        onChange={(e) =>
+                          setLoginForm((f) => ({ ...f, platform: e.target.value }))
+                        }
+                        style={{ ...inputStyle, width: 160 }}
+                      >
+                        <option value="">自动检测</option>
+                        {LOGIN_PLATFORM_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       placeholder="用户名"
                       value={loginForm.username}
@@ -2086,7 +2181,7 @@ export default function Accounts() {
                       onClick={handleLoginAdd}
                       disabled={
                         saving ||
-                        !loginForm.siteId ||
+                        !loginForm.siteUrl ||
                         !loginForm.username ||
                         !loginForm.password
                       }
@@ -3157,9 +3252,32 @@ export default function Accounts() {
 {
                       title: '官网',
                       key: 'site',
-                      render: (_: unknown, a: any) => (
-                        <SiteBadgeLink siteId={a.site?.id} siteName={a.site?.name} siteUrl={a.site?.url} badgeStyle={{ fontSize: 11 }} />
-                      ),
+                      render: (_: unknown, a: any) => {
+                        const siteName = a.site?.name || '';
+                        const username = a.username || '';
+                        const displayName = siteName || username ? `${siteName}${siteName && username ? ' / ' : ''}${username}` : '-';
+                        const siteUrl = a.site?.url;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 500 }}>{displayName}</span>
+                            {siteUrl && (
+                              <a
+                                href={siteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="badge-link"
+                              >
+                                <span className="badge badge-info" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  访问官网
+                                </span>
+                              </a>
+                            )}
+                          </div>
+                        );
+                      },
                     },
                     {
                       title: '运行健康状态',

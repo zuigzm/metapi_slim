@@ -71,7 +71,7 @@ describe('accounts login shield detection', () => {
       method: 'POST',
       url: '/api/accounts/login',
       payload: {
-        siteId: site.id,
+        siteUrl: site.url,
         username: 'demo-user',
         password: 'demo-password',
       },
@@ -103,7 +103,7 @@ describe('accounts login shield detection', () => {
         url: '/api/accounts/login',
         remoteAddress: '198.51.100.10',
         payload: {
-          siteId: site.id,
+          siteUrl: site.url,
           username: 'demo-user',
           password: 'demo-password',
         },
@@ -116,7 +116,7 @@ describe('accounts login shield detection', () => {
       url: '/api/accounts/login',
       remoteAddress: '198.51.100.10',
       payload: {
-        siteId: site.id,
+        siteUrl: site.url,
         username: 'demo-user',
         password: 'demo-password',
       },
@@ -134,7 +134,7 @@ describe('accounts login shield detection', () => {
       method: 'POST',
       url: '/api/accounts/login',
       payload: {
-        siteId: '1',
+        siteUrl: 'not-a-valid-url',
         username: 'demo-user',
         password: 'demo-password',
       },
@@ -143,7 +143,7 @@ describe('accounts login shield detection', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({
       success: false,
-      message: 'Invalid siteId. Expected positive number.',
+      message: expect.stringContaining('Invalid'),
     });
   });
 });

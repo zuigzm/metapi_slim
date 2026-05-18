@@ -3,7 +3,7 @@ import { db, schema, runtimeDbDialect } from "../../db/index.js";
 import { insertAndGetById } from "../../db/insertHelpers.js";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { refreshBalance } from "../../services/balanceService.js";
-import { getAdapter } from "../../services/platforms/index.js";
+import { detectPlatform, getAdapter } from "../../services/platforms/index.js";
 import {
   convergeAccountMutation,
   rebuildRoutesBestEffort,
@@ -509,30 +509,72 @@ export async function accountsRoutes(app: FastifyInstance) {
           .send({ success: false, message: parsedBody.error });
       }
 
-      const { siteId, username, password } = parsedBody.data;
+      const { siteUrl, siteName: providedSiteName, platform: providedPlatform, username, password } = parsedBody.data;
 
-      // Get site info
-      const site = await db
+      // Find existing site by URL
+      const existingSite = await db
         .select()
         .from(schema.sites)
-        .where(eq(schema.sites.id, siteId))
+        .where(eq(schema.sites.url, siteUrl))
         .get();
-      if (!site) return { success: false, message: "site not found" };
+
+      let site = existingSite;
+      let siteId = site?.id;
+      let loginResult: { success: boolean; accessToken?: string; message?: string } | null = null;
+
+      // If site not found, try to login first to validate credentials, then create site
+      if (!site) {
+        // Use provided platform or auto-detect
+        let tempAdapter = providedPlatform ? getAdapter(providedPlatform) : null;
+        if (!tempAdapter) {
+          const detectedAdapter = await detectPlatform(siteUrl);
+          tempAdapter = detectedAdapter;
+        }
+        if (!tempAdapter)
+          return { success: false, message: "站点验证错误：请手动选择平台类型" };
+
+        loginResult = await tempAdapter.login(siteUrl, username, password);
+        if (!loginResult.success || !loginResult.accessToken) {
+          const normalizedFailure = normalizeLoginFailure(loginResult.message);
+          return {
+            success: false,
+            shieldBlocked: normalizedFailure.shieldBlocked,
+            message: normalizedFailure.message || "站点验证错误",
+          };
+        }
+
+        // Login succeeded, now create the site
+        const newSite = await db
+          .insert(schema.sites)
+          .values({
+            url: siteUrl,
+            name: providedSiteName || siteUrl,
+            platform: tempAdapter.platformName,
+          })
+          .returning()
+          .get();
+        site = newSite;
+        siteId = newSite.id;
+      }
+
+      if (!site || !siteId) return { success: false, message: "site not found" };
 
       // Get platform adapter
       const adapter = getAdapter(site.platform);
       if (!adapter)
         return { success: false, message: `不支持的平台: ${site.platform}` };
 
-      // Login to the target site
-      const loginResult = await adapter.login(site.url, username, password);
-      if (!loginResult.success || !loginResult.accessToken) {
-        const normalizedFailure = normalizeLoginFailure(loginResult.message);
-        return {
-          success: false,
-          shieldBlocked: normalizedFailure.shieldBlocked,
-          message: normalizedFailure.message,
-        };
+      // If site was newly created, reuse the validated loginResult; otherwise login again
+      if (!loginResult) {
+        loginResult = await adapter.login(site.url, username, password);
+        if (!loginResult.success || !loginResult.accessToken) {
+          const normalizedFailure = normalizeLoginFailure(loginResult.message);
+          return {
+            success: false,
+            shieldBlocked: normalizedFailure.shieldBlocked,
+            message: normalizedFailure.message,
+          };
+        }
       }
 
       const guessedPlatformUserId = guessPlatformUserIdFromUsername(username);
@@ -544,17 +586,21 @@ export async function accountsRoutes(app: FastifyInstance) {
         key?: string | null;
         enabled?: boolean | null;
       }> = [];
+      if (!loginResult || !loginResult.accessToken) {
+        throw new Error("login result not available");
+      }
+      const accessToken = loginResult.accessToken;
       try {
         apiToken = await adapter.getApiToken(
           site.url,
-          loginResult.accessToken,
+          accessToken,
           guessedPlatformUserId,
         );
       } catch {}
       try {
         apiTokens = await adapter.getApiTokens(
           site.url,
-          loginResult.accessToken,
+          accessToken,
           guessedPlatformUserId,
         );
       } catch {}
