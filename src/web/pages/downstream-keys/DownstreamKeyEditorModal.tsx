@@ -353,7 +353,7 @@ export default function DownstreamKeyEditorModal({
       maxWidth={860}
       bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       footer={(
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="btn btn-ghost" disabled={saving}>取消</button>
           <button onClick={onSave} className="btn btn-primary" disabled={saving}>
             {saving
