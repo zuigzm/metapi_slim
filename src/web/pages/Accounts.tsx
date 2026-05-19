@@ -89,7 +89,13 @@ const LOGIN_PLATFORM_OPTIONS = [
 ];
 
 function createLoginForm() {
-  return { siteName: "", siteUrl: "", platform: "", username: "", password: "" };
+  return {
+    siteName: "",
+    siteUrl: "",
+    platform: "",
+    username: "",
+    password: "",
+  };
 }
 
 function createTokenForm(credentialMode: "session" | "apikey" = "session") {
@@ -418,16 +424,17 @@ export default function Accounts() {
     };
   }, []);
 
-  const handleSiteUrlBlur = async (formType: 'login' | 'token') => {
-    const url = formType === 'login' ? loginForm.siteUrl : tokenForm.siteUrl;
+  const handleSiteUrlBlur = async (formType: "login" | "token") => {
+    const url = formType === "login" ? loginForm.siteUrl : tokenForm.siteUrl;
     if (!url) return;
     // Skip if user already manually selected a platform
-    const currentPlatform = formType === 'login' ? loginForm.platform : tokenForm.platform;
+    const currentPlatform =
+      formType === "login" ? loginForm.platform : tokenForm.platform;
     if (currentPlatform) return;
     try {
       const detected = await api.detectSite(url);
       if (detected?.platform) {
-        if (formType === 'login') {
+        if (formType === "login") {
           setLoginForm((f) => ({ ...f, platform: detected.platform }));
         } else {
           setTokenForm((f) => ({ ...f, platform: detected.platform }));
@@ -437,7 +444,8 @@ export default function Accounts() {
   };
 
   const handleLoginAdd = async () => {
-    if (!loginForm.siteUrl || !loginForm.username || !loginForm.password) return;
+    if (!loginForm.siteUrl || !loginForm.username || !loginForm.password)
+      return;
     setSaving(true);
     try {
       const result = await api.loginAccount({
@@ -1815,7 +1823,7 @@ export default function Accounts() {
                       onChange={(e) =>
                         setTokenForm((f) => ({ ...f, siteUrl: e.target.value }))
                       }
-                      onBlur={() => handleSiteUrlBlur('token')}
+                      onBlur={() => handleSiteUrlBlur("token")}
                       style={inputStyle}
                     />
                     <datalist id="site-url-suggestions">
@@ -1828,20 +1836,28 @@ export default function Accounts() {
                         placeholder="站点名称"
                         value={tokenForm.siteName}
                         onChange={(e) =>
-                          setTokenForm((f) => ({ ...f, siteName: e.target.value }))
+                          setTokenForm((f) => ({
+                            ...f,
+                            siteName: e.target.value,
+                          }))
                         }
                         style={{ ...inputStyle, flex: 1 }}
                       />
                       <select
                         value={tokenForm.platform || ""}
                         onChange={(e) =>
-                          setTokenForm((f) => ({ ...f, platform: e.target.value }))
+                          setTokenForm((f) => ({
+                            ...f,
+                            platform: e.target.value,
+                          }))
                         }
                         style={{ ...inputStyle, width: 160 }}
                       >
                         <option value="">自动检测</option>
                         {LOGIN_PLATFORM_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -2123,7 +2139,7 @@ export default function Accounts() {
                       onChange={(e) =>
                         setLoginForm((f) => ({ ...f, siteUrl: e.target.value }))
                       }
-                      onBlur={() => handleSiteUrlBlur('login')}
+                      onBlur={() => handleSiteUrlBlur("login")}
                       style={inputStyle}
                     />
                     <datalist id="site-url-suggestions">
@@ -2136,20 +2152,28 @@ export default function Accounts() {
                         placeholder="站点名称"
                         value={loginForm.siteName}
                         onChange={(e) =>
-                          setLoginForm((f) => ({ ...f, siteName: e.target.value }))
+                          setLoginForm((f) => ({
+                            ...f,
+                            siteName: e.target.value,
+                          }))
                         }
                         style={{ ...inputStyle, flex: 1 }}
                       />
                       <select
                         value={loginForm.platform}
                         onChange={(e) =>
-                          setLoginForm((f) => ({ ...f, platform: e.target.value }))
+                          setLoginForm((f) => ({
+                            ...f,
+                            platform: e.target.value,
+                          }))
                         }
                         style={{ ...inputStyle, width: 160 }}
                       >
                         <option value="">自动检测</option>
                         {LOGIN_PLATFORM_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -2888,8 +2912,8 @@ export default function Accounts() {
           </CenteredModal>
 
           <div className="card">
-              {isMobile ? (
-                <>
+            {isMobile ? (
+              <>
                 <div className="mobile-card-list">
                   {paginatedAccounts.map((a: any) => {
                     const capabilities = resolveAccountCapabilities(a);
@@ -3231,193 +3255,451 @@ export default function Accounts() {
                       </MobileCard>
                     );
                   })}
+                </div>
+                {totalPages > 1 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 0",
+                    }}
+                  >
+                    <button
+                      disabled={page <= 1}
+                      onClick={() => setPage(page - 1)}
+                      className="btn btn-ghost"
+                      style={{ border: "1px solid var(--color-border)" }}
+                    >
+                      上一页
+                    </button>
+                    <span
+                      style={{ fontSize: 13, color: "var(--color-text-muted)" }}
+                    >
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(page + 1)}
+                      className="btn btn-ghost"
+                      style={{ border: "1px solid var(--color-border)" }}
+                    >
+                      下一页
+                    </button>
                   </div>
-                  {totalPages > 1 && (
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '12px 0' }}>
-                      <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }}>
-                        上一页
-                      </button>
-                      <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{page} / {totalPages}</span>
-                      <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }}>
-                        下一页
-                      </button>
-                    </div>
-                  )}
-                </>
-                ) : (
-                    <Table<any>
-                      rowKey="id"
-                      dataSource={paginatedAccounts}
-                      columns={[
-{
-                      title: '官网',
-                      key: 'site',
-                      render: (_: unknown, a: any) => {
-                        const siteName = a.site?.name || '';
-                        const username = a.username || '';
-                        const displayName = siteName || username ? `${siteName}${siteName && username ? ' / ' : ''}${username}` : '-';
-                        const siteUrl = a.site?.url;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 500 }}>{displayName}</span>
-                            {siteUrl && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                {username && (
-                                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)', fontWeight: 500 }}>
-                                    {username}
-                                  </span>
-                                )}
-                                <a
-                                  href={siteUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="badge-link"
-                                >
-                                  <span className="badge badge-info" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                    访问官网
-                                  </span>
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
-                    },
-                    {
-                      title: '运行健康状态',
-                      key: 'health',
-                      render: (_: unknown, a: any) => {
-                        const health = resolveRuntimeHealth(a);
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <span className={`badge ${health.cls}`} style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content' }}>
-                              <span className={`status-dot ${health.dotClass} ${health.pulse ? 'animate-pulse-dot' : ''}`} style={{ marginRight: 0 }} />
-                              {health.label}
-                            </span>
-                            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-tooltip={health.reason}>
-                              {health.reason}
-                            </span>
-                          </div>
-                        );
-                      },
-                    },
-                    {
-                      title: '余额',
-                      key: 'balance',
-                      className: 'accounts-balance-col',
-                      render: (_: unknown, a: any) => (
-                        <div style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>${(a.balance || 0).toFixed(2)}</div>
-                          <div style={{ fontSize: 11, color: (a.todayReward || 0) > 0 ? 'var(--color-success)' : 'var(--color-text-muted)', fontWeight: 500 }}>
-                            +{(a.todayReward || 0).toFixed(2)}
-                          </div>
-                        </div>
-                      ),
-                    },
-                    {
-                      title: '已用',
-                      key: 'used',
-                      className: 'accounts-used-col',
-                      render: (_: unknown, a: any) => (
-                        <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
-                          <div>${(a.balanceUsed || 0).toFixed(2)}</div>
-                          <div style={{ fontSize: 11, color: (a.todaySpend || 0) > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)', fontWeight: 500 }}>
-                            -{(a.todaySpend || 0).toFixed(2)}
-                          </div>
-                        </div>
-                      ),
-                    },
-                    {
-                      title: '签到',
-                      key: 'checkin',
-                      render: (_: unknown, a: any) => {
-                        const capabilities = resolveAccountCapabilities(a);
-                        return capabilities.canCheckin ? (
-                          <button type="button" className={`checkin-toggle-badge ${a.checkinEnabled ? 'is-on' : 'is-off'}`}
-                            onClick={() => handleToggleCheckin(a)}
-                            disabled={!!actionLoading[`checkin-toggle-${a.id}`]}
-                            data-tooltip={a.checkinEnabled ? '点击关闭签到，全部签到会忽略此账号' : '点击开启签到'}
-                            aria-label={a.checkinEnabled ? '点击关闭签到，全部签到会忽略此账号' : '点击开启签到'}
-                          >
-                            {actionLoading[`checkin-toggle-${a.id}`] ? <span className="spinner spinner-sm" /> : (a.checkinEnabled ? '开启' : '关闭')}
-                          </button>
-                        ) : (
-                          <span className="badge badge-muted" style={{ fontSize: 11 }}>不支持</span>
-                        );
-                      },
-                    },
-                    {
-                      title: '操作',
-                      key: 'actions',
-                      className: 'accounts-actions-cell',
-                      render: (_: unknown, a: any) => {
-                        const capabilities = resolveAccountCapabilities(a);
-                        return (
-                          <div className="accounts-row-actions" style={{ justifyContent: 'flex-end' }}>
-                            <button onClick={() => handleTogglePin(a)} disabled={!!actionLoading[`pin-toggle-${a.id}`]}
-                              className={`btn btn-link ${a.isPinned ? 'btn-link-warning' : 'btn-link-primary'}`}>
-                              {actionLoading[`pin-toggle-${a.id}`] ? <span className="spinner spinner-sm" /> : (a.isPinned ? '取消置顶' : '置顶')}
-                            </button>
-                            {sortMode === 'custom' && <>
-                              <button onClick={() => handleMoveCustomOrder(a, 'up')} disabled={!!actionLoading[`reorder-${a.id}`]} className="btn btn-link btn-link-muted">↑</button>
-                              <button onClick={() => handleMoveCustomOrder(a, 'down')} disabled={!!actionLoading[`reorder-${a.id}`]} className="btn btn-link btn-link-muted">↓</button>
-                            </>}
-                            {capabilities.canRefreshBalance && (
-                              <button onClick={() => withLoading(`refresh-${a.id}`, () => api.refreshBalance(a.id), '余额已刷新')}
-                                disabled={actionLoading[`refresh-${a.id}`]} className="btn btn-link btn-link-primary">
-                                {actionLoading[`refresh-${a.id}`] ? <span className="spinner spinner-sm" /> : '刷新'}
-                              </button>
-                            )}
-                            <button onClick={() => openModelModal(a)} disabled={actionLoading[`models-${a.id}`]} className="btn btn-link btn-link-info">模型</button>
-                            {capabilities.canCheckin && (
-                              <button onClick={() => withLoading(`checkin-${a.id}`, () => api.triggerCheckin(a.id), '签到完成')}
-                                disabled={actionLoading[`checkin-${a.id}`]} className="btn btn-link btn-link-warning">
-                                {actionLoading[`checkin-${a.id}`] ? <span className="spinner spinner-sm" /> : '签到'}
-                              </button>
-                            )}
-                            {a.status === 'expired' && !capabilities.proxyOnly && (
-                              <button onClick={() => openRebindPanel(a)} className="btn btn-link btn-link-warning">重新绑定</button>
-                            )}
-                            <button onClick={() => openEditPanel(a)} className="btn btn-link btn-link-info">编辑</button>
-                            <button onClick={() => setDeleteConfirm({ mode: 'single', accountId: a.id, accountName: resolveAccountDisplayName(a) })}
-                              disabled={actionLoading[`delete-${a.id}`]} className="btn btn-link btn-link-danger">
-                              {actionLoading[`delete-${a.id}`] ? <span className="spinner spinner-sm" /> : '删除'}
-                            </button>
-                          </div>
-                        );
-                      },
-                    },
-                  ]}
-                  pagination={false}
-                  rowSelection={{
-                    selectedRowKeys: selectedAccountIds,
-                    onChange: (keys: React.Key[]) => {
-                      setSelectedAccountIds(keys as number[]);
-                    },
-                    renderCell: (_checked, record, _index, originNode) =>
-                      React.cloneElement(originNode as React.ReactElement, {
-                        'data-testid': `account-select-${record.id}`,
-                      }),
-                  }}
-                  onRow={(record) => ({
-                    onClick: () => handleAccountRowClick(record.id, {} as any),
-                    'data-testid': `account-row-${record.id}`,
-                    className: `${selectedAccountIds.includes(record.id) ? 'row-selected' : ''} ${highlightAccountId === record.id ? 'row-focus-highlight' : ''}`,
-                  })}
-                  size="small"
-                  tableLayout="fixed"
-                  locale={{ emptyText: (
-                    <div className="empty-state">
-                      <svg className="empty-state-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                      <div className="empty-state-title">{activeSegment === 'apikey' ? '暂无 API Key 连接' : '暂无 Session 连接'}</div>
-                      <div className="empty-state-desc">{activeSegment === 'apikey' ? (sites.length > 0 ? '请为现有站点补充 API Key 连接' : '请先添加站点，然后为站点补充 API Key 连接') : (sites.length > 0 ? '请为现有站点添加 Session 连接' : '请先添加站点，然后添加 Session 连接')}</div>
-                    </div>
-                  )}}
-                />
                 )}
+              </>
+            ) : (
+              <Table<any>
+                rowKey="id"
+                dataSource={paginatedAccounts}
+                columns={[
+                  {
+                    title: "官网",
+                    key: "site",
+                    render: (_: unknown, a: any) => {
+                      const siteName = a.site?.name || "";
+                      const username = a.username || "";
+                      const displayName = siteName;
+                      const siteUrl = a.site?.url;
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "var(--color-text-primary)",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {displayName}
+                          </span>
+                          {siteUrl && (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              {username && (
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    background:
+                                      "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                                    color: "var(--color-primary)",
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {username}
+                                </span>
+                              )}
+                              <a
+                                href={siteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="badge-link"
+                              >
+                                <span
+                                  className="badge badge-info"
+                                  style={{
+                                    fontSize: 11,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                    />
+                                  </svg>
+                                  访问官网
+                                </span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    title: "运行健康状态",
+                    key: "health",
+                    render: (_: unknown, a: any) => {
+                      const health = resolveRuntimeHealth(a);
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <span
+                            className={`badge ${health.cls}`}
+                            style={{
+                              fontSize: 11,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              width: "fit-content",
+                            }}
+                          >
+                            <span
+                              className={`status-dot ${health.dotClass} ${health.pulse ? "animate-pulse-dot" : ""}`}
+                              style={{ marginRight: 0 }}
+                            />
+                            {health.label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "var(--color-text-muted)",
+                              maxWidth: 200,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            data-tooltip={health.reason}
+                          >
+                            {health.reason}
+                          </span>
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    title: "余额",
+                    key: "balance",
+                    className: "accounts-balance-col",
+                    render: (_: unknown, a: any) => (
+                      <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            color: "var(--color-text-primary)",
+                          }}
+                        >
+                          ${(a.balance || 0).toFixed(2)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color:
+                              (a.todayReward || 0) > 0
+                                ? "var(--color-success)"
+                                : "var(--color-text-muted)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          +{(a.todayReward || 0).toFixed(2)}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    title: "已用",
+                    key: "used",
+                    className: "accounts-used-col",
+                    render: (_: unknown, a: any) => (
+                      <div
+                        style={{
+                          fontVariantNumeric: "tabular-nums",
+                          fontSize: 12,
+                        }}
+                      >
+                        <div>${(a.balanceUsed || 0).toFixed(2)}</div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color:
+                              (a.todaySpend || 0) > 0
+                                ? "var(--color-danger)"
+                                : "var(--color-text-muted)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          -{(a.todaySpend || 0).toFixed(2)}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    title: "签到",
+                    key: "checkin",
+                    render: (_: unknown, a: any) => {
+                      const capabilities = resolveAccountCapabilities(a);
+                      return capabilities.canCheckin ? (
+                        <button
+                          type="button"
+                          className={`checkin-toggle-badge ${a.checkinEnabled ? "is-on" : "is-off"}`}
+                          onClick={() => handleToggleCheckin(a)}
+                          disabled={!!actionLoading[`checkin-toggle-${a.id}`]}
+                          data-tooltip={
+                            a.checkinEnabled
+                              ? "点击关闭签到，全部签到会忽略此账号"
+                              : "点击开启签到"
+                          }
+                          aria-label={
+                            a.checkinEnabled
+                              ? "点击关闭签到，全部签到会忽略此账号"
+                              : "点击开启签到"
+                          }
+                        >
+                          {actionLoading[`checkin-toggle-${a.id}`] ? (
+                            <span className="spinner spinner-sm" />
+                          ) : a.checkinEnabled ? (
+                            "开启"
+                          ) : (
+                            "关闭"
+                          )}
+                        </button>
+                      ) : (
+                        <span
+                          className="badge badge-muted"
+                          style={{ fontSize: 11 }}
+                        >
+                          不支持
+                        </span>
+                      );
+                    },
+                  },
+                  {
+                    title: "操作",
+                    key: "actions",
+                    className: "accounts-actions-cell",
+                    render: (_: unknown, a: any) => {
+                      const capabilities = resolveAccountCapabilities(a);
+                      return (
+                        <div
+                          className="accounts-row-actions"
+                          style={{ justifyContent: "flex-end" }}
+                        >
+                          <button
+                            onClick={() => handleTogglePin(a)}
+                            disabled={!!actionLoading[`pin-toggle-${a.id}`]}
+                            className={`btn btn-link ${a.isPinned ? "btn-link-warning" : "btn-link-primary"}`}
+                          >
+                            {actionLoading[`pin-toggle-${a.id}`] ? (
+                              <span className="spinner spinner-sm" />
+                            ) : a.isPinned ? (
+                              "取消置顶"
+                            ) : (
+                              "置顶"
+                            )}
+                          </button>
+                          {sortMode === "custom" && (
+                            <>
+                              <button
+                                onClick={() => handleMoveCustomOrder(a, "up")}
+                                disabled={!!actionLoading[`reorder-${a.id}`]}
+                                className="btn btn-link btn-link-muted"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => handleMoveCustomOrder(a, "down")}
+                                disabled={!!actionLoading[`reorder-${a.id}`]}
+                                className="btn btn-link btn-link-muted"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
+                          {capabilities.canRefreshBalance && (
+                            <button
+                              onClick={() =>
+                                withLoading(
+                                  `refresh-${a.id}`,
+                                  () => api.refreshBalance(a.id),
+                                  "余额已刷新",
+                                )
+                              }
+                              disabled={actionLoading[`refresh-${a.id}`]}
+                              className="btn btn-link btn-link-primary"
+                            >
+                              {actionLoading[`refresh-${a.id}`] ? (
+                                <span className="spinner spinner-sm" />
+                              ) : (
+                                "刷新"
+                              )}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openModelModal(a)}
+                            disabled={actionLoading[`models-${a.id}`]}
+                            className="btn btn-link btn-link-info"
+                          >
+                            模型
+                          </button>
+                          {capabilities.canCheckin && (
+                            <button
+                              onClick={() =>
+                                withLoading(
+                                  `checkin-${a.id}`,
+                                  () => api.triggerCheckin(a.id),
+                                  "签到完成",
+                                )
+                              }
+                              disabled={actionLoading[`checkin-${a.id}`]}
+                              className="btn btn-link btn-link-warning"
+                            >
+                              {actionLoading[`checkin-${a.id}`] ? (
+                                <span className="spinner spinner-sm" />
+                              ) : (
+                                "签到"
+                              )}
+                            </button>
+                          )}
+                          {a.status === "expired" &&
+                            !capabilities.proxyOnly && (
+                              <button
+                                onClick={() => openRebindPanel(a)}
+                                className="btn btn-link btn-link-warning"
+                              >
+                                重新绑定
+                              </button>
+                            )}
+                          <button
+                            onClick={() => openEditPanel(a)}
+                            className="btn btn-link btn-link-info"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            onClick={() =>
+                              setDeleteConfirm({
+                                mode: "single",
+                                accountId: a.id,
+                                accountName: resolveAccountDisplayName(a),
+                              })
+                            }
+                            disabled={actionLoading[`delete-${a.id}`]}
+                            className="btn btn-link btn-link-danger"
+                          >
+                            {actionLoading[`delete-${a.id}`] ? (
+                              <span className="spinner spinner-sm" />
+                            ) : (
+                              "删除"
+                            )}
+                          </button>
+                        </div>
+                      );
+                    },
+                  },
+                ]}
+                pagination={false}
+                rowSelection={{
+                  selectedRowKeys: selectedAccountIds,
+                  onChange: (keys: React.Key[]) => {
+                    setSelectedAccountIds(keys as number[]);
+                  },
+                  renderCell: (_checked, record, _index, originNode) =>
+                    React.cloneElement(originNode as React.ReactElement, {
+                      "data-testid": `account-select-${record.id}`,
+                    }),
+                }}
+                onRow={(record) => ({
+                  onClick: () => handleAccountRowClick(record.id, {} as any),
+                  "data-testid": `account-row-${record.id}`,
+                  className: `${selectedAccountIds.includes(record.id) ? "row-selected" : ""} ${highlightAccountId === record.id ? "row-focus-highlight" : ""}`,
+                })}
+                size="small"
+                tableLayout="fixed"
+                locale={{
+                  emptyText: (
+                    <div className="empty-state">
+                      <svg
+                        className="empty-state-icon"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1}
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                      <div className="empty-state-title">
+                        {activeSegment === "apikey"
+                          ? "暂无 API Key 连接"
+                          : "暂无 Session 连接"}
+                      </div>
+                      <div className="empty-state-desc">
+                        {activeSegment === "apikey"
+                          ? sites.length > 0
+                            ? "请为现有站点补充 API Key 连接"
+                            : "请先添加站点，然后为站点补充 API Key 连接"
+                          : sites.length > 0
+                            ? "请为现有站点添加 Session 连接"
+                            : "请先添加站点，然后添加 Session 连接"}
+                      </div>
+                    </div>
+                  ),
+                }}
+              />
+            )}
           </div>
         </>
       )}
