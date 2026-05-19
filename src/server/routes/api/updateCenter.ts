@@ -124,8 +124,8 @@ export async function updateCenterRoutes(app: FastifyInstance) {
     }
     const helperToken = getUpdateCenterHelperToken();
 
-    const source = body.source === 'docker-hub-tag'
-      ? 'docker-hub-tag'
+    const source = body.source === 'domestic-release'
+      ? 'domestic-release'
       : body.source === 'github-release'
         ? 'github-release'
         : config.defaultDeploySource;

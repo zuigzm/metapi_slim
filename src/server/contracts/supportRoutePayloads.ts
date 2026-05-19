@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const updateCenterVersionSourceSchema = z.enum(['docker-hub-tag', 'github-release']);
+const updateCenterVersionSourceSchema = z.enum(['domestic-release', 'github-release']);
 
 const authChangePayloadSchema = z.object({
   oldToken: z.string().optional(),
@@ -67,7 +67,9 @@ const updateCenterConfigPayloadSchema = z.object({
   chartRef: z.string().optional(),
   imageRepository: z.string().optional(),
   githubReleasesEnabled: z.boolean().optional(),
-  dockerHubTagsEnabled: z.boolean().optional(),
+  githubReleaseRepo: z.string().optional(),
+  domesticReleasesEnabled: z.boolean().optional(),
+  domesticReleaseRepo: z.string().optional(),
   defaultDeploySource: updateCenterVersionSourceSchema.optional(),
 }).passthrough();
 
@@ -166,14 +168,20 @@ function formatSupportRoutePayloadError(error: z.ZodError): string {
   if (firstPath === 'githubReleasesEnabled') {
     return 'Invalid githubReleasesEnabled. Expected boolean.';
   }
-  if (firstPath === 'dockerHubTagsEnabled') {
-    return 'Invalid dockerHubTagsEnabled. Expected boolean.';
+  if (firstPath === 'domesticReleasesEnabled') {
+    return 'Invalid domesticReleasesEnabled. Expected boolean.';
+  }
+  if (firstPath === 'githubReleaseRepo') {
+    return 'Invalid githubReleaseRepo. Expected string.';
+  }
+  if (firstPath === 'domesticReleaseRepo') {
+    return 'Invalid domesticReleaseRepo. Expected string.';
   }
   if (firstPath === 'defaultDeploySource') {
-    return 'Invalid defaultDeploySource. Expected docker-hub-tag/github-release.';
+    return 'Invalid defaultDeploySource. Expected domestic-release/github-release.';
   }
   if (firstPath === 'source') {
-    return 'Invalid source. Expected docker-hub-tag/github-release.';
+    return 'Invalid source. Expected domestic-release/github-release.';
   }
   if (firstPath === 'targetVersion') {
     return 'Invalid targetVersion. Expected string.';

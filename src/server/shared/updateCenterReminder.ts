@@ -11,7 +11,7 @@ export type UpdateHelperRuntimeLike = {
 };
 
 export type UpdateReminderCandidate = {
-  source: 'github-release' | 'docker-hub-tag';
+  source: 'github-release' | 'domestic-release';
   kind: 'new-version' | 'new-digest';
   candidateKey: string;
   displayVersion: string;
@@ -88,13 +88,13 @@ export function isSameImageTarget(
 }
 
 export function buildUpdateReminderCandidateKey(
-  source: 'github-release' | 'docker-hub-tag',
+  source: 'github-release' | 'domestic-release',
   candidate: { tagName?: string | null; digest?: string | null },
 ): string {
   const tagName = normalizeString(candidate.tagName);
   const digest = normalizeDigest(candidate.digest);
   if (!tagName) return '';
-  if (source === 'docker-hub-tag' && digest) {
+  if (source === 'domestic-release' && digest) {
     return `${source}:${tagName}@${digest}`;
   }
   return `${source}:${tagName}`;
@@ -104,7 +104,7 @@ export function resolveUpdateReminderCandidate(input: {
   currentVersion?: string | null;
   helper: UpdateHelperRuntimeLike | null | undefined;
   githubRelease: UpdateVersionCandidateLike | null | undefined;
-  dockerHubTag: UpdateVersionCandidateLike | null | undefined;
+  domesticRelease: UpdateVersionCandidateLike | null | undefined;
 }): UpdateReminderCandidate | null {
   const githubCandidateVersion = normalizeString(input.githubRelease?.normalizedVersion);
   const githubTag = normalizeString(input.githubRelease?.tagName || githubCandidateVersion);
@@ -124,36 +124,36 @@ export function resolveUpdateReminderCandidate(input: {
     }
   }
 
-  const dockerCandidateVersion = normalizeString(input.dockerHubTag?.normalizedVersion);
-  const dockerTag = normalizeString(input.dockerHubTag?.tagName || dockerCandidateVersion);
-  const dockerDigest = normalizeDigest(input.dockerHubTag?.digest);
-  if (!dockerTag) return null;
+  const domesticCandidateVersion = normalizeString(input.domesticRelease?.normalizedVersion);
+  const domesticTag = normalizeString(input.domesticRelease?.tagName || domesticCandidateVersion);
+  const domesticDigest = normalizeDigest(input.domesticRelease?.digest);
+  if (!domesticTag) return null;
 
-  if (isSameImageTarget(input.helper, { tag: dockerTag, digest: dockerDigest })) {
+  if (isSameImageTarget(input.helper, { tag: domesticTag, digest: domesticDigest })) {
     return null;
   }
 
-  const dockerVersionCompare = compareStableVersions(input.currentVersion, dockerCandidateVersion || dockerTag);
-  if (dockerVersionCompare === -1) {
+  const domesticVersionCompare = compareStableVersions(input.currentVersion, domesticCandidateVersion || domesticTag);
+  if (domesticVersionCompare === -1) {
     return {
-      source: 'docker-hub-tag',
+      source: 'domestic-release',
       kind: 'new-version',
-      candidateKey: buildUpdateReminderCandidateKey('docker-hub-tag', { tagName: dockerTag, digest: dockerDigest || null }),
-      displayVersion: normalizeString(input.dockerHubTag?.displayVersion || input.dockerHubTag?.normalizedVersion || dockerTag),
-      tagName: dockerTag,
-      digest: dockerDigest || null,
+      candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest || null }),
+      displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+      tagName: domesticTag,
+      digest: domesticDigest || null,
     };
   }
 
   const helperDigest = normalizeDigest(input.helper?.imageDigest);
-  if (dockerDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, dockerTag) && helperDigest !== dockerDigest) {
+  if (domesticDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, domesticTag) && helperDigest !== domesticDigest) {
     return {
-      source: 'docker-hub-tag',
+      source: 'domestic-release',
       kind: 'new-digest',
-      candidateKey: buildUpdateReminderCandidateKey('docker-hub-tag', { tagName: dockerTag, digest: dockerDigest }),
-      displayVersion: normalizeString(input.dockerHubTag?.displayVersion || input.dockerHubTag?.normalizedVersion || dockerTag),
-      tagName: dockerTag,
-      digest: dockerDigest,
+      candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest }),
+      displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+      tagName: domesticTag,
+      digest: domesticDigest,
     };
   }
 

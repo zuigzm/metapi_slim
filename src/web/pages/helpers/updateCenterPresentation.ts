@@ -111,7 +111,7 @@ export function describeGitHubDeployState(input: {
   };
 }
 
-export function describeDockerDeployState(input: {
+export function describeDomesticDeployState(input: {
   enabled: boolean;
   helperHealthy: boolean;
   helperError?: string | null;
@@ -185,7 +185,7 @@ export function describeDockerDeployState(input: {
       kind: 'new-version',
       badgeClassName: 'badge badge-success',
       badgeLabel: '发现新版本',
-      reason: 'Docker Hub 已出现更高版本，可直接发起部署。',
+      reason: '国内镜像源已出现更高版本，可直接发起部署。',
       canDeploy: true,
       highlight: true,
     };
@@ -227,20 +227,20 @@ export function buildUpdateReminder(input: {
   currentVersion?: string | null;
   helper: UpdateHelperRuntimeLike | null | undefined;
   githubRelease: UpdateVersionCandidateLike | null | undefined;
-  dockerHubTag: UpdateVersionCandidateLike | null | undefined;
+  domesticRelease: UpdateVersionCandidateLike | null | undefined;
 }): UpdateReminder {
   const hasGitHubCandidate = Boolean(normalizeString(
     input.githubRelease?.displayVersion
       || input.githubRelease?.normalizedVersion
       || input.githubRelease?.tagName,
   ));
-  const hasDockerCandidate = Boolean(normalizeString(
-    input.dockerHubTag?.displayVersion
-      || input.dockerHubTag?.normalizedVersion
-      || input.dockerHubTag?.tagName
-      || input.dockerHubTag?.digest,
+  const hasDomesticCandidate = Boolean(normalizeString(
+    input.domesticRelease?.displayVersion
+      || input.domesticRelease?.normalizedVersion
+      || input.domesticRelease?.tagName
+      || input.domesticRelease?.digest,
   ));
-  if (!hasGitHubCandidate && !hasDockerCandidate) {
+  if (!hasGitHubCandidate && !hasDomesticCandidate) {
     return {
       label: '无法检查更新',
       badgeClassName: 'badge badge-muted',
@@ -253,17 +253,17 @@ export function buildUpdateReminder(input: {
     currentVersion: input.currentVersion,
     helper: input.helper,
     githubRelease: input.githubRelease,
-    dockerHubTag: input.dockerHubTag,
+    domesticRelease: input.domesticRelease,
   });
   if (candidate) {
     return {
       label: candidate.kind === 'new-digest' ? '发现新 digest' : '发现新版本',
       badgeClassName: 'badge badge-success',
       detail: candidate.kind === 'new-digest'
-        ? 'Docker Hub 的 alias tag 已指向新 digest，可按需部署。'
+        ? '国内镜像源的 alias tag 已指向新 digest，可按需部署。'
         : candidate.source === 'github-release'
           ? `GitHub 稳定版 ${normalizeString(input.githubRelease?.displayVersion || input.githubRelease?.normalizedVersion)} 已可部署。`
-          : `Docker Hub ${normalizeString(input.dockerHubTag?.displayVersion || input.dockerHubTag?.normalizedVersion)} 已可部署。`,
+          : `国内镜像源 ${normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion)} 已可部署。`,
       highlight: true,
     };
   }
