@@ -106,11 +106,13 @@ function buildReleaseCandidate(
 export function selectLatestStableRelease(
   releases: GitHubReleaseRecord[],
   source: UpdateCenterVersionSource,
+  includePrerelease = false,
 ): UpdateCenterVersionCandidate | null {
   let selected: { semver: StableSemVer; release: GitHubReleaseRecord } | null = null;
 
   for (const release of releases) {
-    if (release?.draft || release?.prerelease) continue;
+    if (release?.draft) continue;
+    if (!includePrerelease && release?.prerelease) continue;
     const semver = parseStableSemVer(release?.tag_name);
     if (!semver) continue;
     if (!selected || compareStableSemVer(semver, selected.semver) > 0) {
@@ -144,7 +146,7 @@ export async function fetchLatestStableDomesticRelease(repo: string): Promise<Up
       'user-agent': 'metapi-update-center/1.0',
     },
   }, 'AtomGit releases lookup') as GitHubReleaseRecord[];
-  return selectLatestStableRelease(Array.isArray(releases) ? releases : [], 'domestic-release');
+  return selectLatestStableRelease(Array.isArray(releases) ? releases : [], 'domestic-release', true);
 }
 
 export function resolvePreferredDeploySource(input: {

@@ -104,12 +104,14 @@ function buildNextRuntimeState(
   status: Pick<UpdateCenterStatusResult, 'currentVersion' | 'githubRelease' | 'domesticRelease' | 'helper'>,
   previousRuntime: UpdateCenterRuntimeState,
   checkedAt: string,
+  preferredSource?: 'github-release' | 'domestic-release',
 ): { candidate: UpdateReminderCandidate | null; nextRuntime: UpdateCenterRuntimeState } {
   const candidate = resolveUpdateReminderCandidate({
     currentVersion: status.currentVersion,
     helper: status.helper,
     githubRelease: status.githubRelease,
     domesticRelease: status.domesticRelease,
+    preferredSource,
   });
 
   return {
@@ -194,9 +196,11 @@ export async function refreshUpdateCenterStatusCache(checkedAt = formatUtcSqlDat
   previousRuntime: UpdateCenterRuntimeState;
   runtime: UpdateCenterRuntimeState;
 }> {
+  const config = await loadUpdateCenterConfig();
   const status = await buildUpdateCenterStatus();
   const previousRuntime = status.runtime || await loadUpdateCenterRuntimeState();
-  const { candidate, nextRuntime } = buildNextRuntimeState(status, previousRuntime, checkedAt);
+  const preferredSource = config.defaultDeploySource;
+  const { candidate, nextRuntime } = buildNextRuntimeState(status, previousRuntime, checkedAt, preferredSource);
   const runtime = await saveUpdateCenterRuntimeState(nextRuntime);
   return {
     status: {

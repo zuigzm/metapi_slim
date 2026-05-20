@@ -105,10 +105,15 @@ export function resolveUpdateReminderCandidate(input: {
   helper: UpdateHelperRuntimeLike | null | undefined;
   githubRelease: UpdateVersionCandidateLike | null | undefined;
   domesticRelease: UpdateVersionCandidateLike | null | undefined;
+  preferredSource?: 'github-release' | 'domestic-release';
 }): UpdateReminderCandidate | null {
-  const githubCandidateVersion = normalizeString(input.githubRelease?.normalizedVersion);
-  const githubTag = normalizeString(input.githubRelease?.tagName || githubCandidateVersion);
-  if (githubTag) {
+  const preferredDomestic = input.preferredSource === 'domestic-release';
+
+  // Helper to check GitHub release
+  const checkGithub = (): UpdateReminderCandidate | null => {
+    const githubCandidateVersion = normalizeString(input.githubRelease?.normalizedVersion);
+    const githubTag = normalizeString(input.githubRelease?.tagName || githubCandidateVersion);
+    if (!githubTag) return null;
     const githubTargetVersion = githubCandidateVersion || githubTag;
     const versionCompare = compareStableVersions(input.currentVersion, githubTargetVersion);
     const helperVersionCompare = compareStableVersions(input.helper?.imageTag, githubTargetVersion);
@@ -122,39 +127,58 @@ export function resolveUpdateReminderCandidate(input: {
         digest: null,
       };
     }
-  }
-
-  const domesticCandidateVersion = normalizeString(input.domesticRelease?.normalizedVersion);
-  const domesticTag = normalizeString(input.domesticRelease?.tagName || domesticCandidateVersion);
-  const domesticDigest = normalizeDigest(input.domesticRelease?.digest);
-  if (!domesticTag) return null;
-
-  if (isSameImageTarget(input.helper, { tag: domesticTag, digest: domesticDigest })) {
     return null;
-  }
+  };
 
-  const domesticVersionCompare = compareStableVersions(input.currentVersion, domesticCandidateVersion || domesticTag);
-  if (domesticVersionCompare === -1) {
-    return {
-      source: 'domestic-release',
-      kind: 'new-version',
-      candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest || null }),
-      displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
-      tagName: domesticTag,
-      digest: domesticDigest || null,
-    };
-  }
+  // Helper to check domestic release
+  const checkDomestic = (): UpdateReminderCandidate | null => {
+    const domesticCandidateVersion = normalizeString(input.domesticRelease?.normalizedVersion);
+    const domesticTag = normalizeString(input.domesticRelease?.tagName || domesticCandidateVersion);
+    const domesticDigest = normalizeDigest(input.domesticRelease?.digest);
+    if (!domesticTag) return null;
 
-  const helperDigest = normalizeDigest(input.helper?.imageDigest);
-  if (domesticDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, domesticTag) && helperDigest !== domesticDigest) {
-    return {
-      source: 'domestic-release',
-      kind: 'new-digest',
-      candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest }),
-      displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
-      tagName: domesticTag,
-      digest: domesticDigest,
-    };
+    if (isSameImageTarget(input.helper, { tag: domesticTag, digest: domesticDigest })) {
+      return null;
+    }
+
+    const domesticVersionCompare = compareStableVersions(input.currentVersion, domesticCandidateVersion || domesticTag);
+    if (domesticVersionCompare === -1) {
+      return {
+        source: 'domestic-release',
+        kind: 'new-version',
+        candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest || null }),
+        displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+        tagName: domesticTag,
+        digest: domesticDigest || null,
+      };
+    }
+
+    const helperDigest = normalizeDigest(input.helper?.imageDigest);
+    if (domesticDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, domesticTag) && helperDigest !== domesticDigest) {
+      return {
+        source: 'domestic-release',
+        kind: 'new-digest',
+        candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest }),
+        displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+        tagName: domesticTag,
+        digest: domesticDigest,
+      };
+    }
+    return null;
+  };
+
+  if (preferredDomestic) {
+    // When using domestic mirror, check domestic first then github
+    const domestic = checkDomestic();
+    if (domestic) return domestic;
+    const github = checkGithub();
+    if (github) return github;
+  } else {
+    // Default: check github first then domestic
+    const github = checkGithub();
+    if (github) return github;
+    const domestic = checkDomestic();
+    if (domestic) return domestic;
   }
 
   return null;

@@ -1311,6 +1311,14 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+  // Docker update APIs
+  getDockerEnvironment: () => request("/api/docker/environment"),
+  getDockerStatus: () => request("/api/docker/status"),
+  updateDockerImage: (data: { imageName: string; tag: string }) =>
+    request("/api/docker/update", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   testExternalDatabaseConnection: (data: {
     dialect: "sqlite" | "mysql" | "postgres";
     connectionString: string;

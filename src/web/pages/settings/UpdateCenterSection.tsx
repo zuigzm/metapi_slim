@@ -78,6 +78,17 @@ type UpdateCenterStatus = {
   } | null;
 };
 
+type DockerEnvironment = {
+  environment: 'docker' | 'k3s' | 'unknown';
+  dockerAvailable: boolean;
+  containerStatus: {
+    running: boolean;
+    image: string | null;
+    tag: string | null;
+    digest: string | null;
+  } | null;
+};
+
 const DEFAULT_CONFIG: NonNullable<UpdateCenterStatus['config']> = {
   enabled: false,
   helperBaseUrl: '',
@@ -86,7 +97,7 @@ const DEFAULT_CONFIG: NonNullable<UpdateCenterStatus['config']> = {
   chartRef: '',
   imageRepository: '1467078763/metapi',
   githubReleasesEnabled: true,
-  domesticReleasesEnabled: false,
+  domesticReleasesEnabled: true,
   githubReleaseRepo: 'cita-777/metapi',
   domesticReleaseRepo: 'zuigzm/metapi_slim',
   defaultDeploySource: 'github-release',
@@ -231,6 +242,8 @@ export default function UpdateCenterSection() {
   const [taskStatus, setTaskStatus] = useState('');
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const [dockerEnv, setDockerEnv] = useState<DockerEnvironment | null>(null);
+  const [dockerUpdating, setDockerUpdating] = useState(false);
 
   const applyStatus = (next: UpdateCenterStatus) => {
     setStatus(next);
@@ -264,6 +277,12 @@ export default function UpdateCenterSection() {
 
   useEffect(() => {
     void loadStatus();
+    // 获取 Docker 环境信息
+    api.getDockerEnvironment().then((env: any) => {
+      setDockerEnv(env);
+    }).catch(() => {
+      // 忽略错误，可能是非 Docker 环境
+    });
     return () => {
       streamAbortRef.current?.abort();
     };
@@ -338,7 +357,7 @@ export default function UpdateCenterSection() {
 
     try {
       const response = await api.deployUpdateCenter({
-        source: source as 'github-release' | 'docker-hub-tag',
+        source: source as 'github-release' | 'domestic-release',
         targetTag,
         targetDigest: target.digest || null,
       }) as { task?: { id: string } };
@@ -398,6 +417,29 @@ export default function UpdateCenterSection() {
     } finally {
       setDeploying(false);
       void refreshStatus(false).catch(() => {});
+    }
+  };
+
+  const handleDockerUpdate = async () => {
+    if (!dockerEnv?.containerStatus?.image || !status?.githubRelease?.tagName) return;
+    const imageName = dockerEnv.containerStatus.image.split(':')[0];
+    const tag = status.githubRelease.tagName;
+    setDockerUpdating(true);
+    try {
+      const result = await api.updateDockerImage({ imageName, tag }) as {
+        success: boolean;
+        logLines?: string[];
+      };
+      if (result.success) {
+        toast.success('Docker 镜像更新成功');
+        setLogs(result.logLines || ['更新完成']);
+      } else {
+        toast.error('Docker 镜像更新失败');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Docker 更新失败');
+    } finally {
+      setDockerUpdating(false);
     }
   };
 
@@ -478,15 +520,33 @@ export default function UpdateCenterSection() {
           </div>
           <div style={fieldHintStyle}>以当前容器内运行版本为准。</div>
         </div>
-        <div style={sectionPanelStyle}>
-          <div style={summaryLabelStyle}>Deploy Helper</div>
-          <div style={{ marginBottom: 6 }}>
-            <span className={helperBadge.className}>{helperBadge.label}</span>
+        {dockerEnv?.environment === 'docker' ? (
+          <div style={sectionPanelStyle}>
+            <div style={summaryLabelStyle}>Docker 容器</div>
+            <div style={{ marginBottom: 6 }}>
+              <span className={dockerEnv.containerStatus?.running ? 'badge badge-success' : 'badge badge-error'}>
+                {dockerEnv.containerStatus?.running ? '运行中' : '已停止'}
+              </span>
+            </div>
+            <div style={{ ...summaryValueStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              {dockerEnv.containerStatus?.image || '-'}
+            </div>
+            <div style={fieldHintStyle}>
+              当前镜像: {dockerEnv.containerStatus?.tag || 'unknown'}
+              {dockerEnv.containerStatus?.digest && ` @ ${formatShortDigest(dockerEnv.containerStatus.digest)}`}
+            </div>
           </div>
-          <div style={{ ...fieldHintStyle, fontFamily: config.helperBaseUrl ? 'var(--font-mono)' : 'inherit' }}>
-            {config.helperBaseUrl || '尚未配置 Helper URL'}
+        ) : (
+          <div style={sectionPanelStyle}>
+            <div style={summaryLabelStyle}>Deploy Helper</div>
+            <div style={{ marginBottom: 6 }}>
+              <span className={helperBadge.className}>{helperBadge.label}</span>
+            </div>
+            <div style={{ ...fieldHintStyle, fontFamily: config.helperBaseUrl ? 'var(--font-mono)' : 'inherit' }}>
+              {config.helperBaseUrl || '尚未配置 Helper URL'}
+            </div>
           </div>
-        </div>
+        )}
         <div style={sectionPanelStyle}>
           <div style={summaryLabelStyle}>默认部署来源</div>
           <div style={summaryValueStyle}>
@@ -507,19 +567,21 @@ export default function UpdateCenterSection() {
               : formatTaskTime(status?.lastFinishedTask?.finishedAt)}
           </div>
         </div>
-        <div style={sectionPanelStyle}>
-          <div style={summaryLabelStyle}>后台检查</div>
-          <div style={summaryValueStyle}>
-            {runtimeStatus?.lastCheckedAt ? formatTaskTime(runtimeStatus.lastCheckedAt) : '尚无检查记录'}
+        {dockerEnv?.environment !== 'docker' && (
+          <div style={sectionPanelStyle}>
+            <div style={summaryLabelStyle}>后台检查</div>
+            <div style={summaryValueStyle}>
+              {runtimeStatus?.lastCheckedAt ? formatTaskTime(runtimeStatus.lastCheckedAt) : '尚无检查记录'}
+            </div>
+            <div style={fieldHintStyle}>
+              {runtimeStatus?.lastCheckError
+                ? `最近错误：${runtimeStatus.lastCheckError}`
+                : runtimeStatus?.lastResolvedDisplayVersion
+                  ? `最近发现：${runtimeStatus.lastResolvedDisplayVersion}`
+                  : '后台会定时检查新版本，并在首次发现时提醒一次。'}
+            </div>
           </div>
-          <div style={fieldHintStyle}>
-            {runtimeStatus?.lastCheckError
-              ? `最近错误：${runtimeStatus.lastCheckError}`
-              : runtimeStatus?.lastResolvedDisplayVersion
-                ? `最近发现：${runtimeStatus.lastResolvedDisplayVersion}`
-                : '后台会定时检查新版本，并在首次发现时提醒一次。'}
-          </div>
-        </div>
+        )}
       </div>
 
       <div
@@ -713,13 +775,19 @@ export default function UpdateCenterSection() {
             <button
               type="button"
               onClick={() => {
-                if (!helperHealthy) return;
-                void runDeploy('github-release', {
-                  tag: status?.githubRelease?.tagName || status?.githubRelease?.normalizedVersion || '',
-                  digest: null,
-                });
+                if (dockerEnv?.environment === 'docker') {
+                  void handleDockerUpdate();
+                } else {
+                  if (!helperHealthy) return;
+                  void runDeploy('github-release', {
+                    tag: status?.githubRelease?.tagName || status?.githubRelease?.normalizedVersion || '',
+                    digest: null,
+                  });
+                }
               }}
-              disabled={!canDeployGithub}
+              disabled={dockerEnv?.environment === 'docker'
+                ? dockerUpdating || !status?.githubRelease?.tagName
+                : !canDeployGithub}
               className={config.defaultDeploySource === 'github-release' ? 'btn btn-primary' : 'btn btn-ghost'}
               style={config.defaultDeploySource === 'github-release' ? undefined : { border: '1px solid var(--color-border)' }}
             >
@@ -753,17 +821,23 @@ export default function UpdateCenterSection() {
               <button
                 type="button"
                 onClick={() => {
-                  if (!helperHealthy) return;
-                  void runDeploy('domestic-release', {
-                    tag: status?.domesticRelease?.tagName || status?.domesticRelease?.normalizedVersion || '',
-                    digest: status?.domesticRelease?.digest || null,
-                  });
+                  if (dockerEnv?.environment === 'docker') {
+                    void handleDockerUpdate();
+                  } else {
+                    if (!helperHealthy) return;
+                    void runDeploy('domestic-release', {
+                      tag: status?.domesticRelease?.tagName || status?.domesticRelease?.normalizedVersion || '',
+                      digest: status?.domesticRelease?.digest || null,
+                    });
+                  }
                 }}
-                disabled={!canDeployDomestic}
+                disabled={dockerEnv?.environment === 'docker'
+                  ? dockerUpdating || !status?.domesticRelease?.tagName
+                  : !canDeployDomestic}
                 className={config.defaultDeploySource === 'domestic-release' ? 'btn btn-primary' : 'btn btn-ghost'}
                 style={config.defaultDeploySource === 'domestic-release' ? undefined : { border: '1px solid var(--color-border)' }}
               >
-                部署国内镜像标签
+                部署国内镜像
               </button>
             </div>
           </div>
@@ -776,19 +850,36 @@ export default function UpdateCenterSection() {
             gap: 12,
           }}
         >
-          <div style={sectionPanelStyle}>
-            <div style={fieldLabelStyle}>Helper 健康摘要</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-              <span className={helperBadge.className}>{helperBadge.label}</span>
-              <span className={runningTaskBadge.className}>当前任务 · {runningTaskBadge.label}</span>
+          {dockerEnv?.environment === 'docker' ? (
+            <div style={sectionPanelStyle}>
+              <div style={fieldLabelStyle}>Docker 容器摘要</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                <span className={dockerEnv?.containerStatus?.running ? 'badge badge-success' : 'badge badge-error'}>
+                  {dockerEnv?.containerStatus?.running ? '运行中' : '已停止'}
+                </span>
+              </div>
+              <div style={fieldHintStyle}>
+                镜像：{dockerEnv?.containerStatus?.image || '-'}
+              </div>
+              <div style={{ ...fieldHintStyle, marginTop: 6 }}>
+                当前版本：{dockerEnv?.containerStatus?.tag || 'unknown'}
+              </div>
             </div>
-            <div style={fieldHintStyle}>
-              {status?.helper?.error || 'Helper 正常时会先执行 helm upgrade，再等待 kubectl rollout status。'}
+          ) : (
+            <div style={sectionPanelStyle}>
+              <div style={fieldLabelStyle}>Helper 健康摘要</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                <span className={helperBadge.className}>{helperBadge.label}</span>
+                <span className={runningTaskBadge.className}>当前任务 · {runningTaskBadge.label}</span>
+              </div>
+              <div style={fieldHintStyle}>
+                {status?.helper?.error || 'Helper 正常时会先执行 helm upgrade，再等待 kubectl rollout status。'}
+              </div>
+              <div style={{ ...fieldHintStyle, marginTop: 6 }}>
+                当前镜像：{formatImageTarget(status?.helper?.imageTag, status?.helper?.imageDigest) || '等待 helper 返回运行中镜像'}
+              </div>
             </div>
-            <div style={{ ...fieldHintStyle, marginTop: 6 }}>
-              当前镜像：{formatImageTarget(status?.helper?.imageTag, status?.helper?.imageDigest) || '等待 helper 返回运行中镜像'}
-            </div>
-          </div>
+          )}
 
           <div style={sectionPanelStyle}>
             <div style={fieldLabelStyle}>任务快照</div>
@@ -815,27 +906,27 @@ export default function UpdateCenterSection() {
         </div>
       </div>
 
-      <div style={{ ...sectionPanelStyle, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>回退历史</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span className="badge badge-muted">最近 revision</span>
-            {helperHistory.length > historyPreview.length ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ border: '1px solid var(--color-border)', padding: '4px 10px', minHeight: 0 }}
-                onClick={() => setHistoryModalOpen(true)}
-              >
-                展开全部 {helperHistory.length} 条
-              </button>
-            ) : null}
+      {dockerEnv?.environment !== 'docker' && helperHistory.length > 0 && (
+        <div style={{ ...sectionPanelStyle, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>回退历史</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span className="badge badge-muted">最近 revision</span>
+              {helperHistory.length > historyPreview.length ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ border: '1px solid var(--color-border)', padding: '4px 10px', minHeight: 0 }}
+                  onClick={() => setHistoryModalOpen(true)}
+                >
+                  展开全部 {helperHistory.length} 条
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 10 }}>
-          页面里默认只保留最近 revision 预览，完整历史放进弹窗，避免设置页被长回退列表拖得过长。
-        </div>
-        {helperHistory.length > 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 10 }}>
+            页面里默认只保留最近 revision 预览，完整历史放进弹窗，避免设置页被长回退列表拖得过长。
+          </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {historyPreview.map((entry) => {
               const revision = String(entry?.revision || '').trim();
@@ -856,12 +947,8 @@ export default function UpdateCenterSection() {
               );
             })}
           </div>
-        ) : (
-          <div style={fieldHintStyle}>
-            Helper 还没有返回可回退的 revision 历史。至少成功部署过一次后，这里才会稳定显示历史记录。
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={sectionPanelStyle}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
