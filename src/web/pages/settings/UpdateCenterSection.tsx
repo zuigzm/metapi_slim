@@ -88,7 +88,7 @@ const DEFAULT_CONFIG: NonNullable<UpdateCenterStatus['config']> = {
   githubReleasesEnabled: true,
   domesticReleasesEnabled: false,
   githubReleaseRepo: 'cita-777/metapi',
-  domesticReleaseRepo: '',
+  domesticReleaseRepo: 'zuigzm/metapi_slim',
   defaultDeploySource: 'github-release',
 };
 
@@ -100,8 +100,8 @@ const DEPLOY_SOURCE_OPTIONS = [
   },
   {
     value: 'domestic-release',
-    label: '国内镜像源',
-    description: '适合从国内镜像源获取版本进行部署。',
+    label: '国内镜像',
+    description: '从国内镜像仓库获取版本进行部署。',
   },
 ] as const;
 
@@ -456,7 +456,7 @@ export default function UpdateCenterSection() {
           </span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.55 }}>
-          在设置页里统一查看 GitHub Releases、国内镜像源版本和 K3s helper 状态，避免部署信息散落在多个入口。
+          在设置页里统一查看 GitHub Releases、国内镜像版本和 K3s helper 状态，避免部署信息散落在多个入口。
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, marginTop: 6 }}>
           {updateReminder.detail}
@@ -562,7 +562,7 @@ export default function UpdateCenterSection() {
             style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--color-primary)' }}
           />
           <span style={{ display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>国内镜像源</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>国内镜像</span>
             <span style={fieldHintStyle}>从国内镜像仓库获取版本标签并提供部署入口。</span>
           </span>
         </label>
@@ -729,7 +729,7 @@ export default function UpdateCenterSection() {
 
           <div style={sectionPanelStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>国内镜像源</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>国内镜像</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <span className={getSourceBadge(config.domesticReleasesEnabled, status?.domesticRelease?.normalizedVersion).className}>
                   {getSourceBadge(config.domesticReleasesEnabled, status?.domesticRelease?.normalizedVersion).label}

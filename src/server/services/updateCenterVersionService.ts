@@ -137,13 +137,13 @@ export async function fetchLatestStableGitHubRelease(repo?: string): Promise<Upd
 
 export async function fetchLatestStableDomesticRelease(repo: string): Promise<UpdateCenterVersionCandidate | null> {
   if (!repo) return null;
-  const releasesUrl = `https://api.github.com/repos/${repo}/releases`;
+  const releasesUrl = `https://api.atomgit.com/api/v5/repos/${repo}/releases`;
   const releases = await fetchJsonWithTimeout(releasesUrl, {
     headers: {
-      accept: 'application/vnd.github+json',
+      accept: 'application/json',
       'user-agent': 'metapi-update-center/1.0',
     },
-  }, 'Domestic releases lookup') as GitHubReleaseRecord[];
+  }, 'AtomGit releases lookup') as GitHubReleaseRecord[];
   return selectLatestStableRelease(Array.isArray(releases) ? releases : [], 'domestic-release');
 }
 

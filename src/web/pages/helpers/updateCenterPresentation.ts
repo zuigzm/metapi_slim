@@ -185,7 +185,7 @@ export function describeDomesticDeployState(input: {
       kind: 'new-version',
       badgeClassName: 'badge badge-success',
       badgeLabel: '发现新版本',
-      reason: '国内镜像源已出现更高版本，可直接发起部署。',
+      reason: '国内镜像已出现更高版本，可直接发起部署。',
       canDeploy: true,
       highlight: true,
     };
@@ -260,10 +260,10 @@ export function buildUpdateReminder(input: {
       label: candidate.kind === 'new-digest' ? '发现新 digest' : '发现新版本',
       badgeClassName: 'badge badge-success',
       detail: candidate.kind === 'new-digest'
-        ? '国内镜像源的 alias tag 已指向新 digest，可按需部署。'
+        ? '国内镜像的 alias tag 已指向新 digest，可按需部署。'
         : candidate.source === 'github-release'
           ? `GitHub 稳定版 ${normalizeString(input.githubRelease?.displayVersion || input.githubRelease?.normalizedVersion)} 已可部署。`
-          : `国内镜像源 ${normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion)} 已可部署。`,
+          : `国内镜像 ${normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion)} 已可部署。`,
       highlight: true,
     };
   }
