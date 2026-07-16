@@ -92,7 +92,7 @@ describe('accounts login insert boundary', () => {
       method: 'POST',
       url: '/api/accounts/login',
       payload: {
-        siteId: site.id,
+        siteUrl: site.url,
         username: 'demo-user',
         password: 'demo-password',
       },

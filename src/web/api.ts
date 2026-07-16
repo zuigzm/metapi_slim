@@ -809,7 +809,9 @@ export const api = {
   addAccount: (data: any) =>
     request("/api/accounts", { method: "POST", body: JSON.stringify(data) }),
   loginAccount: (data: {
-    siteId: number;
+    siteUrl: string;
+    siteName?: string;
+    platform?: string;
     username: string;
     password: string;
   }) =>
@@ -947,6 +949,12 @@ export const api = {
     request("/api/routes/batch", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  getAutoAggRules: () => request("/api/routes/auto-agg-rules"),
+  saveAutoAggRules: (rules: unknown) =>
+    request("/api/routes/auto-agg-rules", {
+      method: "PUT",
+      body: JSON.stringify(rules),
     }),
   addChannel: (routeId: number, data: any) =>
     request(`/api/routes/${routeId}/channels`, {
@@ -1185,11 +1193,16 @@ export const api = {
     request(`/api/oauth/connections/${accountId}`, {
       method: "DELETE",
     }) as Promise<{ success: true }>,
+  batchDeleteOAuthConnections: (accountIds: number[]) =>
+    request("/api/oauth/connections/batch-delete", {
+      method: "POST",
+      body: JSON.stringify({ accountIds }),
+    }) as Promise<{ success: boolean; deleted: number; failed: number }>,
   importOAuthConnections: (data: Record<string, unknown>) =>
     request("/api/oauth/import", {
       method: "POST",
-      body: JSON.stringify(Array.isArray(data.items) ? data : { data }),
-    }) as Promise<OAuthImportResponse>,
+      body: JSON.stringify(data),
+    }) as Promise<{ success: boolean; jobId: string }>,
   createOAuthRouteUnit: (data: {
     accountIds: number[];
     name: string;
@@ -1257,7 +1270,7 @@ export const api = {
       body: JSON.stringify({}),
     }),
   deployUpdateCenter: (data: {
-    source: "github-release" | "docker-hub-tag";
+    source: "github-release" | "domestic-release";
     targetTag: string;
     targetDigest?: string | null;
   }) =>
@@ -1296,6 +1309,14 @@ export const api = {
   }) =>
     request("/api/settings/database/runtime", {
       method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  // Docker update APIs
+  getDockerEnvironment: () => request("/api/docker/environment"),
+  getDockerStatus: () => request("/api/docker/status"),
+  updateDockerImage: (data: { imageName: string; tag: string }) =>
+    request("/api/docker/update", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
   testExternalDatabaseConnection: (data: {

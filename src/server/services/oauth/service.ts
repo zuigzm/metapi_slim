@@ -46,7 +46,7 @@ import {
 type OAuthProviderMetadata = ReturnType<typeof listOauthProviders>[number];
 const MANUAL_CALLBACK_DELAY_MS = 15_000;
 const OAUTH_QUOTA_BATCH_REFRESH_CONCURRENCY = 4;
-const MAX_OAUTH_IMPORT_BATCH_SIZE = 100;
+const MAX_OAUTH_IMPORT_BATCH_SIZE = 300;
 type OauthProviderHeaderAccountInput = OauthIdentityCarrierLike & {
   extraConfig?: OauthExtraConfigInput;
 };
@@ -986,6 +986,39 @@ export async function deleteOauthConnection(accountId: number) {
   return { success: true };
 }
 
+export async function deleteOauthConnectionsBatch(accountIds: number[]): Promise<{ success: boolean; deleted: number; failed: number }> {
+  const uniqueIds = Array.from(new Set(accountIds.filter((id) => Number.isFinite(id) && id > 0)));
+  if (uniqueIds.length === 0) {
+    return { success: true, deleted: 0, failed: 0 };
+  }
+  let deleted = 0;
+  let failed = 0;
+  for (const accountId of uniqueIds) {
+    try {
+      const account = await db.select().from(schema.accounts)
+        .where(eq(schema.accounts.id, accountId))
+        .get();
+      if (!account) {
+        failed += 1;
+        continue;
+      }
+      const normalizedOauth = getOauthInfoFromAccount(account);
+      if (!normalizedOauth) {
+        failed += 1;
+        continue;
+      }
+      await db.delete(schema.accounts).where(eq(schema.accounts.id, accountId)).run();
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  if (deleted > 0) {
+    await routeRefreshWorkflow.rebuildRoutesOnly();
+  }
+  return { success: failed === 0, deleted, failed };
+}
+
 export async function refreshOauthConnectionQuota(accountId: number) {
   const quota = await refreshOauthQuotaSnapshot(accountId);
   return { success: true, quota };
@@ -1032,7 +1065,6 @@ export async function importOauthConnectionsFromNativeJson(input: {
   useSystemProxy?: boolean;
 }) {
   const payloadItems = normalizeImportedOauthJsonItems(input);
-  const continueOnItemFailure = Array.isArray(input.items);
   if (payloadItems.length <= 0) {
     throwOauthImportValidationError('data must be a native oauth json object');
   }
@@ -1047,10 +1079,12 @@ export async function importOauthConnectionsFromNativeJson(input: {
     message?: string;
   }> = [];
   let imported = 0;
+  let skipped = 0;
 
   for (const rawPayload of payloadItems) {
     if (!isRecord(rawPayload)) {
-      throwOauthImportValidationError('data must be a native oauth json object');
+      items.push({ name: 'unknown', status: 'failed', message: 'invalid payload format' });
+      continue;
     }
     const payload = rawPayload as ImportedNativeOauthJson;
     let resolvedIdentity: ReturnType<typeof resolveImportedNativeOauthIdentity> | null = null;
@@ -1060,6 +1094,25 @@ export async function importOauthConnectionsFromNativeJson(input: {
       if (!definition) {
         throw new Error(`unsupported oauth provider: ${resolvedIdentity.provider}`);
       }
+
+      // Check if already exists before importing
+      const existingAccount = await findExistingOauthAccount({
+        provider: resolvedIdentity.provider,
+        accountKey: resolvedIdentity.exchange.accountKey || resolvedIdentity.exchange.accountId,
+        email: resolvedIdentity.exchange.email,
+      });
+      if (existingAccount) {
+        skipped += 1;
+        items.push({
+          name: resolvedIdentity.name,
+          status: 'skipped',
+          provider: resolvedIdentity.provider,
+          accountId: existingAccount.id,
+          message: 'already exists',
+        });
+        continue;
+      }
+
       const persisted = await activatePersistedOauthAccount({
         definition,
         exchange: resolvedIdentity.exchange,
@@ -1086,9 +1139,6 @@ export async function importOauthConnectionsFromNativeJson(input: {
         provider: resolvedIdentity?.provider || asNonEmptyString(payload.type) || undefined,
         message: error?.message || 'oauth import failed',
       });
-      if (!continueOnItemFailure) {
-        throw error;
-      }
     }
   }
 
@@ -1097,7 +1147,7 @@ export async function importOauthConnectionsFromNativeJson(input: {
   return {
     success: failed === 0,
     imported,
-    skipped: 0,
+    skipped,
     failed,
     items,
   };

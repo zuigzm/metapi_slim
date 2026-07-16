@@ -32,6 +32,10 @@ export default defineConfig(({ mode }) => {
     server: {
       host: frontendHost,
       port: resolvedFrontendPort,
+      watch: {
+        usePolling: true,
+        interval: 100,
+      },
       proxy: {
         '^/api($|/)': {
           target: proxyTarget,

@@ -31,6 +31,8 @@ import {
   listOauthRouteUnitMembersByUnitIds,
   loadOauthRouteUnitSummariesByIds,
 } from '../../services/oauth/routeUnitService.js';
+import { parseAutoAggRuleListPayload } from '../../contracts/autoAggRulePayloads.js';
+import { upsertSetting } from '../../db/upsertSetting.js';
 import { normalizeTokenRouteMode, type RouteMode } from '../../../shared/tokenRouteContract.js';
 import {
   parseRouteChannelBatchCreatePayload,
@@ -951,6 +953,34 @@ export async function tokensRoutes(app: FastifyInstance) {
       decisionRefreshedAt: route.decisionRefreshedAt ?? null,
       channels: channelsByRoute.get(route.id) || [],
     }));
+  });
+
+  // Auto-aggregation rules — persisted in settings table
+  const AUTO_AGG_RULES_KEY = 'auto_agg_rules';
+
+  async function loadAutoAggRules(): Promise<{ id: string; pattern: string; displayName: string }[]> {
+    const row = await db.select().from(schema.settings).where(eq(schema.settings.key, AUTO_AGG_RULES_KEY)).get();
+    if (!row?.value) return [];
+    try {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) return parsed;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  app.get('/api/routes/auto-agg-rules', async () => {
+    return await loadAutoAggRules();
+  });
+
+  app.put<{ Body: unknown }>('/api/routes/auto-agg-rules', async (request, reply) => {
+    const parsedBody = parseAutoAggRuleListPayload(request.body);
+    if (!parsedBody.success) {
+      return reply.code(400).send({ success: false, message: parsedBody.error });
+    }
+    await upsertSetting(AUTO_AGG_RULES_KEY, parsedBody.data);
+    return { success: true };
   });
 
   app.get<{ Querystring: { model?: string } }>('/api/routes/decision', async (request, reply) => {

@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "antd";
+import { LeftOutlined } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { MobileCard, MobileField } from "../components/MobileCard.js";
 import ResponsiveFilterPanel from "../components/ResponsiveFilterPanel.js";
@@ -65,6 +68,7 @@ function parseLocalDateTimeInput(value: string): Date | null {
 }
 
 export default function CheckinLog() {
+  const navigate = useNavigate();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
@@ -251,7 +255,10 @@ export default function CheckinLog() {
   return (
     <div className="animate-fade-in">
       <div className="page-header">
-        <h2 className="page-title">{tr("签到记录")}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button type="text" icon={<LeftOutlined />} onClick={() => navigate(-1)} style={{ padding: 4 }} />
+          <h2 className="page-title">{tr("签到记录")}</h2>
+        </div>
         <button
           onClick={handleTriggerAll}
           disabled={triggering}

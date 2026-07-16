@@ -10,7 +10,10 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
+import { Table } from 'antd';
+import type { TableColumnsType, TablePaginationConfig } from 'antd';
 import CenteredModal from '../components/CenteredModal.js';
+import DeleteConfirmModal from '../components/DeleteConfirmModal.js';
 import ResponsiveBatchActionBar from '../components/ResponsiveBatchActionBar.js';
 import ResponsiveFilterPanel from '../components/ResponsiveFilterPanel.js';
 import { MobileCard, MobileField } from '../components/MobileCard.js';
@@ -634,7 +637,16 @@ export default function OAuthManagement() {
   const [loaded, setLoaded] = useState(false);
   const [sessionFeedback, setSessionFeedback] = useState<SessionFeedback | null>(null);
   const [actionLoadingKey, setActionLoadingKey] = useState('');
+  const [batchActionLoading, setBatchActionLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<null | {
+    mode: 'single' | 'batch';
+    accountId?: number;
+    accountName?: string;
+    count?: number;
+  }>(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
@@ -933,8 +945,25 @@ export default function OAuthManagement() {
     });
   }, [connections, providerFilter, searchQuery, siteFilter, statusFilter]);
 
-  const allVisibleSelected = filteredConnections.length > 0
-    && filteredConnections.every((connection) => selectedConnectionIds.includes(connection.accountId));
+  const totalPages = Math.ceil(filteredConnections.length / pageSize);
+
+  const paginatedConnections = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredConnections.slice(start, start + pageSize);
+  }, [filteredConnections, page, pageSize]);
+
+  // Reset to page 1 when filters change (not on data auto-refresh)
+  useEffect(() => {
+    setPage(1);
+  }, [providerFilter, searchQuery, siteFilter, statusFilter]);
+
+  // Keep page within bounds after data refresh
+  useEffect(() => {
+    const maxPage = Math.max(1, totalPages);
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [totalPages, page]);
 
   const selectedConnections = useMemo(
     () => connections.filter((connection) => selectedConnectionIds.includes(connection.accountId)),
@@ -1211,23 +1240,27 @@ export default function OAuthManagement() {
 
   const handleDeleteSelected = async () => {
     if (selectedConnectionIds.length === 0) return;
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      const confirmed = window.confirm(`确定要删除选中的 ${selectedConnectionIds.length} 个 OAuth 连接吗？`);
-      if (!confirmed) return;
-    }
-    setActionLoadingKey('delete:selected');
+    setDeleteConfirm({ mode: 'batch', count: selectedConnectionIds.length });
+  };
+
+  const confirmBatchDelete = async () => {
+    const target = deleteConfirm;
+    if (!target || target.mode !== 'batch') return;
+    setDeleteConfirm(null);
+    setBatchActionLoading(true);
     try {
-      const results = await Promise.allSettled(selectedConnectionIds.map((accountId) => api.deleteOAuthConnection(accountId)));
-      const failed = results.filter((item) => item.status === 'rejected').length;
+      const result = await api.batchDeleteOAuthConnections(selectedConnectionIds);
       await loadConnections();
       setSelectedConnectionIds([]);
-      if (failed > 0) {
-        setSessionInfo(`批量删除完成，${failed} 个连接删除失败`);
+      if (result.failed > 0) {
+        setSessionInfo(`批量删除完成：成功 ${result.deleted} 个，失败 ${result.failed} 个`);
       } else {
-        setSessionSuccess(`已删除 ${results.length} 个 OAuth 连接`);
+        setSessionSuccess(`已删除 ${result.deleted} 个 OAuth 连接`);
       }
+    } catch (error: any) {
+      setSessionError(error?.message || '批量删除失败');
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -1247,7 +1280,7 @@ export default function OAuthManagement() {
 
   const handleRefreshSelected = async () => {
     if (selectedConnectionIds.length === 0) return;
-    setActionLoadingKey('quota:selected');
+    setBatchActionLoading(true);
     try {
       const result = await api.refreshOAuthConnectionQuotaBatch(selectedConnectionIds);
       await loadConnections();
@@ -1259,7 +1292,7 @@ export default function OAuthManagement() {
     } catch (error: any) {
       setSessionError(error?.message || '批量刷新额度失败');
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -1424,29 +1457,69 @@ export default function OAuthManagement() {
           systemEnabled: importSystemProxyEnabled,
           proxyValue: importProxyUrl,
         });
-      const result = parsedItems.length === 1
-        && !('proxyUrl' in importProxySettings)
-        && !('useSystemProxy' in importProxySettings)
-        ? await api.importOAuthConnections(parsedItems[0]!)
-        : await api.importOAuthConnections({
-          items: parsedItems,
-          ...importProxySettings,
-        });
 
-      await loadConnections();
-      const importMessage = result.failed > 0
-        ? `批量导入完成，成功 ${result.imported} 个，失败 ${result.failed} 个`
-        : `已添加 ${result.imported} 个 OAuth 连接`;
-      if (result.failed > 0) {
-        toast.info(importMessage);
-      } else {
-        toast.success(importMessage);
+      const { jobId } = await api.importOAuthConnections({
+        items: parsedItems,
+        ...importProxySettings,
+      }) as { jobId?: string; success?: boolean };
+
+      if (!jobId) {
+        throw new Error('导入任务未返回 taskId');
       }
-      if (result.failed > 0) {
-        setSessionInfo(importMessage);
-      } else {
-        setSessionSuccess(importMessage);
+
+      // Poll for task completion
+      const taskFetcher = (api as { getTask?: (id: string) => Promise<unknown> }).getTask;
+      if (typeof taskFetcher !== 'function') {
+        throw new Error('Task polling not available');
       }
+
+      let pollCount = 0;
+      const maxPolls = 600; // 600 * 1.5s = up to 15 min
+      while (pollCount < maxPolls) {
+        const taskResponse = await taskFetcher(jobId) as { task?: { status?: string; result?: unknown; error?: string | null; message?: string } };
+        const task = taskResponse?.task;
+        if (!task) {
+          throw new Error('导入任务不存在');
+        }
+        const status = String(task.status || '').trim();
+        if (status === 'pending' || status === 'running') {
+          pollCount++;
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          continue;
+        }
+
+        // Task completed
+        await loadConnections();
+        if (status === 'succeeded' && task.result) {
+          const r = task.result as { imported?: number; skipped?: number; failed?: number };
+          const details: string[] = [];
+          if (r.imported) details.push(`成功 ${r.imported} 个`);
+          if (r.skipped) details.push(`跳过 ${r.skipped} 个`);
+          if (r.failed) details.push(`失败 ${r.failed} 个`);
+          const importMessage = `导入完成：${details.join('，')}`;
+          if (r.failed && r.failed > 0) {
+            toast.info(importMessage);
+            setSessionInfo(importMessage);
+          } else {
+            toast.success(importMessage);
+            setSessionSuccess(importMessage);
+          }
+        } else if (status === 'failed') {
+          const errorMsg = task.message || task.error || '导入失败';
+          toast.error(errorMsg);
+          setSessionError(errorMsg);
+        } else {
+          const importMessage = task.message || '导入完成';
+          toast.success(importMessage);
+          setSessionSuccess(importMessage);
+        }
+        closeImportModal();
+        return;
+      }
+
+      // Timed out
+      toast.info('导入任务已提交，请稍后查看连接列表');
+      setSessionSuccess('导入任务已提交，正在后台处理');
       closeImportModal();
     } catch (error: any) {
       const message = error?.message || '导入 OAuth JSON 失败';
@@ -1514,7 +1587,7 @@ export default function OAuthManagement() {
     const routeUnitId = selectedRouteUnitParticipation.routeUnitId ?? selectedRouteUnitParticipation.id;
     if (!routeUnitId) return;
 
-    setActionLoadingKey('route-unit:delete');
+    setBatchActionLoading(true);
     try {
       const routeUnitFeedback = {
         action: 'deleted' as const,
@@ -1541,7 +1614,7 @@ export default function OAuthManagement() {
       toast.error(message);
       setSessionError(message);
     } finally {
-      setActionLoadingKey('');
+      setBatchActionLoading(false);
     }
   };
 
@@ -1550,17 +1623,6 @@ export default function OAuthManagement() {
       ...current,
       [key]: !current[key],
     }));
-  };
-
-  const toggleSelectAllVisible = (checked: boolean) => {
-    if (!checked) {
-      setSelectedConnectionIds((current) => current.filter((id) => !filteredConnections.some((connection) => connection.accountId === id)));
-      return;
-    }
-    setSelectedConnectionIds((current) => Array.from(new Set([
-      ...current,
-      ...filteredConnections.map((connection) => connection.accountId),
-    ])));
   };
 
   const filterBar = (
@@ -1720,196 +1782,230 @@ export default function OAuthManagement() {
     </div>
   );
 
-  const desktopTable = (
-    <table className="data-table oauth-table">
-      <thead>
-        <tr>
-          <th className="oauth-table-checkbox-col">
-            <input
-              data-testid="oauth-select-all"
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={(event) => toggleSelectAllVisible(event.target.checked)}
-            />
-          </th>
-          {visibleColumns.identity ? <th className="oauth-col-identity">账号</th> : null}
-          {visibleColumns.site ? <th className="oauth-col-site">站点</th> : null}
-          {visibleColumns.status ? <th className="oauth-col-status">状态</th> : null}
-          {visibleColumns.quota ? <th className="oauth-col-quota">额度</th> : null}
-          {visibleColumns.proxy ? <th className="oauth-col-proxy">计划 / 代理</th> : null}
-          <th className="oauth-table-actions-col">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {filteredConnections.map((connection) => {
-          const quota = connection.quota;
-          const emailLabel = resolveConnectionEmailLabel(connection);
+  const desktopTable = (() => {
+    const columns: TableColumnsType<OAuthConnectionInfo> = [];
+
+    if (visibleColumns.identity) {
+      columns.push({
+        title: '账号',
+        key: 'identity',
+        className: 'oauth-col-identity',
+        render: (_: unknown, connection: OAuthConnectionInfo) => {
           const primaryTitle = resolveConnectionPrimaryTitle(connection);
+          const emailLabel = resolveConnectionEmailLabel(connection);
+          return (
+            <div className="oauth-cell-stack">
+              <div className="oauth-cell-inline">
+                <button
+                  type="button"
+                  className="btn btn-link btn-link-info oauth-account-trigger oauth-identity-primary"
+                  title={primaryTitle}
+                  onClick={() => void openModelsModal(connection)}
+                >
+                  {primaryTitle}
+                </button>
+                <span className={`badge oauth-badge ${connection.provider === 'codex' ? 'badge-info' : 'badge-primary'}`}>
+                  {connection.provider}
+                </span>
+                <span className={`badge oauth-badge ${connection.status === 'abnormal' ? 'badge-warning' : 'badge-success'}`}>
+                  {resolveConnectionStatusLabel(connection.status)}
+                </span>
+              </div>
+              {emailLabel && emailLabel !== primaryTitle ? (
+                <div className="oauth-cell-secondary oauth-identity-secondary" title={emailLabel}>{emailLabel}</div>
+              ) : null}
+              {connection.accountKey ? (
+                <div className="oauth-cell-tertiary oauth-identity-key" title={connection.accountKey}>
+                  连接: {compactAccountKey(connection.accountKey)}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.site) {
+      columns.push({
+        title: '站点',
+        key: 'site',
+        className: 'oauth-col-site',
+        render: (_: unknown, connection: OAuthConnectionInfo) => {
           const sitePlatform = asTrimmedString(connection.site?.platform);
+          return (
+            <div className="oauth-cell-stack">
+              <div className="oauth-cell-primary oauth-site-name" title={connection.site?.name || '--'}>
+                {connection.site?.name || '--'}
+              </div>
+              {sitePlatform && sitePlatform !== connection.provider ? (
+                <div className="oauth-cell-secondary">{sitePlatform}</div>
+              ) : null}
+            </div>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.status) {
+      columns.push({
+        title: '状态',
+        key: 'status',
+        className: 'oauth-col-status',
+        render: (_: unknown, connection: OAuthConnectionInfo) => {
+          const quota = connection.quota;
           const modelSyncDetail = resolveModelSyncDetail(connection);
           const quotaSyncDetail = resolveQuotaSyncDetail(quota);
           return (
-            <tr key={connection.accountId}>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={selectedConnectionIds.includes(connection.accountId)}
-                  onChange={(event) => {
-                    const checked = event.target.checked;
-                    setSelectedConnectionIds((current) => checked
-                      ? Array.from(new Set([...current, connection.accountId]))
-                      : current.filter((id) => id !== connection.accountId));
-                  }}
-                />
-              </td>
-              {visibleColumns.identity ? (
-                <td className="oauth-col-identity">
-                  <div className="oauth-cell-stack">
-                    <div className="oauth-cell-inline">
-                      <button
-                        type="button"
-                        className="btn btn-link btn-link-info oauth-account-trigger oauth-identity-primary"
-                        title={primaryTitle}
-                        onClick={() => void openModelsModal(connection)}
-                      >
-                        {primaryTitle}
-                      </button>
-                      <span className={`badge oauth-badge ${connection.provider === 'codex' ? 'badge-info' : 'badge-primary'}`}>
-                        {connection.provider}
-                      </span>
-                      <span className={`badge oauth-badge ${connection.status === 'abnormal' ? 'badge-warning' : 'badge-success'}`}>
-                        {resolveConnectionStatusLabel(connection.status)}
-                      </span>
-                    </div>
-                    {emailLabel && emailLabel !== primaryTitle ? (
-                      <div className="oauth-cell-secondary oauth-identity-secondary" title={emailLabel}>{emailLabel}</div>
-                    ) : null}
-                    {connection.accountKey ? (
-                      <div className="oauth-cell-tertiary oauth-identity-key" title={connection.accountKey}>
-                        连接: {compactAccountKey(connection.accountKey)}
-                      </div>
-                    ) : null}
+            <div className="oauth-status-stack">
+              <div className="oauth-status-item">
+                <div className="oauth-status-line">
+                  <div className="oauth-status-label">模型</div>
+                  <div className="oauth-cell-secondary oauth-status-value" title={modelSyncDetail || resolveModelSyncStatusText(connection)}>
+                    {resolveModelSyncStatusText(connection)}
                   </div>
-                </td>
-              ) : null}
-              {visibleColumns.site ? (
-                <td className="oauth-col-site">
-                  <div className="oauth-cell-stack">
-                    <div className="oauth-cell-primary oauth-site-name" title={connection.site?.name || '--'}>
-                      {connection.site?.name || '--'}
-                    </div>
-                    {sitePlatform && sitePlatform !== connection.provider ? (
-                      <div className="oauth-cell-secondary">{sitePlatform}</div>
-                    ) : null}
-                  </div>
-                </td>
-              ) : null}
-              {visibleColumns.status ? (
-                <td className="oauth-col-status">
-                  <div className="oauth-status-stack">
-                    <div className="oauth-status-item">
-                      <div className="oauth-status-line">
-                        <div className="oauth-status-label">模型</div>
-                        <div className="oauth-cell-secondary oauth-status-value" title={modelSyncDetail || resolveModelSyncStatusText(connection)}>
-                          {resolveModelSyncStatusText(connection)}
-                        </div>
-                      </div>
-                      {modelSyncDetail ? (
-                        <div className="oauth-status-detail" title={modelSyncDetail}>{modelSyncDetail}</div>
-                      ) : null}
-                    </div>
-                    <div className="oauth-status-item">
-                      <div className="oauth-status-line">
-                        <div className="oauth-status-label">额度</div>
-                        <div className="oauth-cell-tertiary oauth-status-value" title={quotaSyncDetail || resolveQuotaSyncStatusText(quota)}>
-                          {resolveQuotaSyncStatusText(quota)}
-                        </div>
-                      </div>
-                      {quotaSyncDetail ? (
-                        <div className="oauth-status-detail" title={quotaSyncDetail}>{quotaSyncDetail}</div>
-                      ) : null}
-                    </div>
-                  </div>
-                </td>
-              ) : null}
-              {visibleColumns.quota ? (
-                <td className="oauth-col-quota">
-                  {quota ? (
-                    <div className="oauth-quota-stack">
-                      <div className="oauth-quota-meta">
-                        <span className={`badge oauth-badge ${quota.status === 'error' ? 'badge-warning' : quota.status === 'unsupported' ? 'badge-muted' : 'badge-info'}`}>
-                          {resolveQuotaStatusLabel(quota.status)}
-                        </span>
-                        <span className="oauth-cell-tertiary">{resolveQuotaSourceLabel(quota.source)}</span>
-                      </div>
-                      <QuotaWindowRow label="5h" window={quota.windows?.fiveHour} />
-                      <QuotaWindowRow label="7d" window={quota.windows?.sevenDay} />
-                    </div>
-                  ) : (
-                    <span className="oauth-cell-secondary">--</span>
-                  )}
-                </td>
-              ) : null}
-              {visibleColumns.proxy ? (
-                <td className="oauth-col-proxy">
-                  <div className="oauth-cell-stack">
-                    <div className="oauth-cell-secondary">{resolveProxyProjectSummary(connection)}</div>
-                    <div className="oauth-cell-secondary">{resolveRouteParticipationSummary(connection)}</div>
-                    <div className="oauth-cell-tertiary">{resolveProxyDisplayText(connection)}</div>
-                    <button
-                      type="button"
-                      className="btn btn-link btn-link-info oauth-inline-trigger"
-                      onClick={() => openProxySettingsDrawer(connection)}
-                    >
-                      {hasOauthProxySelection(connection) ? '代理设置' : '设置代理'}
-                    </button>
-                  </div>
-                </td>
-              ) : null}
-              <td className="oauth-actions-cell">
-                <div className="oauth-row-actions">
-                  <button
-                    type="button"
-                    className="btn btn-link btn-link-info"
-                    onClick={() => void openModelsModal(connection)}
-                  >
-                    {connection.modelCount} 个模型
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-link btn-link-primary"
-                    onClick={() => handleRefreshQuota(connection.accountId)}
-                    disabled={actionLoadingKey === `quota:${connection.accountId}`}
-                  >
-                    {actionLoadingKey === `quota:${connection.accountId}` ? '刷新中...' : '刷新额度'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-link btn-link-info"
-                    onClick={() => openRebindDrawer(connection)}
-                  >
-                    重新授权
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-link btn-link-danger"
-                    onClick={() => handleDelete(connection.accountId)}
-                    disabled={actionLoadingKey === `delete:${connection.accountId}`}
-                  >
-                    {actionLoadingKey === `delete:${connection.accountId}` ? '删除中...' : '删除连接'}
-                  </button>
                 </div>
-              </td>
-            </tr>
+                {modelSyncDetail ? (
+                  <div className="oauth-status-detail" title={modelSyncDetail}>{modelSyncDetail}</div>
+                ) : null}
+              </div>
+              <div className="oauth-status-item">
+                <div className="oauth-status-line">
+                  <div className="oauth-status-label">额度</div>
+                  <div className="oauth-cell-tertiary oauth-status-value" title={quotaSyncDetail || resolveQuotaSyncStatusText(quota)}>
+                    {resolveQuotaSyncStatusText(quota)}
+                  </div>
+                </div>
+                {quotaSyncDetail ? (
+                  <div className="oauth-status-detail" title={quotaSyncDetail}>{quotaSyncDetail}</div>
+                ) : null}
+              </div>
+            </div>
           );
-        })}
-      </tbody>
-    </table>
-  );
+        },
+      });
+    }
+
+    if (visibleColumns.quota) {
+      columns.push({
+        title: '额度',
+        key: 'quota',
+        className: 'oauth-col-quota',
+        render: (_: unknown, connection: OAuthConnectionInfo) => {
+          const quota = connection.quota;
+          return quota ? (
+            <div className="oauth-quota-stack">
+              <div className="oauth-quota-meta">
+                <span className={`badge oauth-badge ${quota.status === 'error' ? 'badge-warning' : quota.status === 'unsupported' ? 'badge-muted' : 'badge-info'}`}>
+                  {resolveQuotaStatusLabel(quota.status)}
+                </span>
+                <span className="oauth-cell-tertiary">{resolveQuotaSourceLabel(quota.source)}</span>
+              </div>
+              <QuotaWindowRow label="5h" window={quota.windows?.fiveHour} />
+              <QuotaWindowRow label="7d" window={quota.windows?.sevenDay} />
+            </div>
+          ) : (
+            <span className="oauth-cell-secondary">--</span>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.proxy) {
+      columns.push({
+        title: '计划 / 代理',
+        key: 'proxy',
+        className: 'oauth-col-proxy',
+        render: (_: unknown, connection: OAuthConnectionInfo) => (
+          <div className="oauth-cell-stack">
+            <div className="oauth-cell-secondary">{resolveProxyProjectSummary(connection)}</div>
+            <div className="oauth-cell-secondary">{resolveRouteParticipationSummary(connection)}</div>
+            <div className="oauth-cell-tertiary">{resolveProxyDisplayText(connection)}</div>
+            <button
+              type="button"
+              className="btn btn-link btn-link-info oauth-inline-trigger"
+              onClick={() => openProxySettingsDrawer(connection)}
+            >
+              {hasOauthProxySelection(connection) ? '代理设置' : '设置代理'}
+            </button>
+          </div>
+        ),
+      });
+    }
+
+    columns.push({
+      title: '操作',
+      key: 'actions',
+      className: 'oauth-actions-cell',
+      render: (_: unknown, connection: OAuthConnectionInfo) => (
+        <div className="oauth-row-actions">
+          <button
+            type="button"
+            className="btn btn-link btn-link-info"
+            onClick={() => void openModelsModal(connection)}
+          >
+            {connection.modelCount} 个模型
+          </button>
+          <button
+            type="button"
+            className="btn btn-link btn-link-primary"
+            onClick={() => handleRefreshQuota(connection.accountId)}
+            disabled={actionLoadingKey === `quota:${connection.accountId}`}
+          >
+            {actionLoadingKey === `quota:${connection.accountId}` ? '刷新中...' : '刷新额度'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-link btn-link-info"
+            onClick={() => openRebindDrawer(connection)}
+          >
+            重新授权
+          </button>
+          <button
+            type="button"
+            className="btn btn-link btn-link-danger"
+            onClick={() => handleDelete(connection.accountId)}
+            disabled={actionLoadingKey === `delete:${connection.accountId}`}
+          >
+            {actionLoadingKey === `delete:${connection.accountId}` ? '删除中...' : '删除连接'}
+          </button>
+        </div>
+      ),
+    });
+
+    return (
+      <Table<OAuthConnectionInfo>
+        rowKey="accountId"
+        dataSource={filteredConnections}
+        columns={columns}
+        className="oauth-table"
+        pagination={{
+          current: page,
+          pageSize: pageSize,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '60', '100'],
+          showTotal: (total: number) => `共 ${total} 条`,
+          onChange: (newPage: number, newPageSize: number) => {
+            setSelectedConnectionIds([]);
+            setPage(newPage);
+            setPageSize(newPageSize);
+          },
+        }}
+        rowSelection={{
+          selectedRowKeys: selectedConnectionIds,
+          onChange: (keys: React.Key[]) => {
+            setSelectedConnectionIds(keys as number[]);
+          },
+        }}
+        size="small"
+        tableLayout="fixed"
+        locale={{ emptyText: '暂无数据' }}
+      />
+    );
+  })();
 
   const mobileList = (
     <div className="mobile-card-list oauth-mobile-list">
-      {filteredConnections.map((connection) => {
+      {paginatedConnections.map((connection) => {
         const quota = connection.quota;
         return (
           <MobileCard
@@ -2012,8 +2108,36 @@ export default function OAuthManagement() {
           </MobileCard>
         );
       })}
+      {totalPages > 1 ? (
+        <div className="oauth-mobile-pagination">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm oauth-outline-button"
+            disabled={page <= 1}
+            onClick={() => {
+              setSelectedConnectionIds([]);
+              setPage((p) => Math.max(1, p - 1));
+            }}
+          >
+            上一页
+          </button>
+          <span className="oauth-mobile-page-info">{page} / {totalPages}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm oauth-outline-button"
+            disabled={page >= totalPages}
+            onClick={() => {
+              setSelectedConnectionIds([]);
+              setPage((p) => Math.min(totalPages, p + 1));
+            }}
+          >
+            下一页
+          </button>
+        </div>
+      ) : null}
     </div>
   );
+
 
   return (
     <div className="page-container animate-fade-in">
@@ -2083,6 +2207,45 @@ export default function OAuthManagement() {
         }
       />
 
+      <ResponsiveBatchActionBar isMobile={isMobile} info={`已选 ${selectedConnectionIds.length} 项`} desktopStyle={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            className="btn btn-ghost oauth-outline-button"
+            onClick={handleRefreshSelected}
+            disabled={batchActionLoading || selectedConnectionIds.length === 0}
+          >
+            {batchActionLoading ? '刷新中...' : '批量刷新额度'}
+          </button>
+          {canMergeSelectedIntoRouteUnit ? (
+            <button
+              type="button"
+              className="btn btn-ghost oauth-outline-button"
+              onClick={openRouteUnitModal}
+              disabled={selectedConnectionIds.length === 0}
+            >
+              合并参与路由
+            </button>
+          ) : null}
+          {canSplitSelectedRouteUnit ? (
+            <button
+              type="button"
+              className="btn btn-ghost oauth-outline-button"
+              onClick={handleDeleteSelectedRouteUnit}
+              disabled={batchActionLoading || selectedConnectionIds.length === 0}
+            >
+              {batchActionLoading ? '拆分中...' : '拆回单体'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-link btn-link-danger"
+            onClick={() => setDeleteConfirm({ mode: 'batch', count: selectedConnectionIds.length })}
+            disabled={batchActionLoading || selectedConnectionIds.length === 0}
+          >
+            {batchActionLoading ? '删除中...' : '批量删除'}
+          </button>
+        </ResponsiveBatchActionBar>
+
       <div className="card oauth-workbench-card">
         <div className="oauth-workbench-head">
           <div>
@@ -2092,46 +2255,6 @@ export default function OAuthManagement() {
             </div>
           </div>
         </div>
-
-        {selectedConnectionIds.length > 0 ? (
-          <ResponsiveBatchActionBar isMobile={isMobile} info={`已选 ${selectedConnectionIds.length} 项`} desktopStyle={{ marginBottom: 12 }}>
-            <button
-              type="button"
-              className="btn btn-ghost oauth-outline-button"
-              onClick={handleRefreshSelected}
-              disabled={actionLoadingKey === 'quota:selected'}
-            >
-              {actionLoadingKey === 'quota:selected' ? '刷新中...' : '批量刷新额度'}
-            </button>
-            {canMergeSelectedIntoRouteUnit ? (
-              <button
-                type="button"
-                className="btn btn-ghost oauth-outline-button"
-                onClick={openRouteUnitModal}
-              >
-                合并参与路由
-              </button>
-            ) : null}
-            {canSplitSelectedRouteUnit ? (
-              <button
-                type="button"
-                className="btn btn-ghost oauth-outline-button"
-                onClick={handleDeleteSelectedRouteUnit}
-                disabled={actionLoadingKey === 'route-unit:delete'}
-              >
-                {actionLoadingKey === 'route-unit:delete' ? '拆分中...' : '拆回单体'}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-link btn-link-danger"
-              onClick={handleDeleteSelected}
-              disabled={actionLoadingKey === 'delete:selected'}
-            >
-              {actionLoadingKey === 'delete:selected' ? '删除中...' : '批量删除'}
-            </button>
-          </ResponsiveBatchActionBar>
-        ) : null}
 
         {!loaded ? (
           <div className="empty-state oauth-empty-state">
@@ -2596,6 +2719,31 @@ export default function OAuthManagement() {
           />
         </div>
       </CenteredModal>
+
+      <DeleteConfirmModal
+        open={Boolean(deleteConfirm)}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmBatchDelete}
+        title="确认删除 OAuth 连接"
+        confirmText="确认删除"
+        loading={batchActionLoading}
+        description={
+          deleteConfirm?.mode === 'single' ? (
+            <>
+              确定要删除连接{' '}
+              <strong>
+                {deleteConfirm.accountName || `#${deleteConfirm.accountId}`}
+              </strong>{' '}
+              吗？
+            </>
+          ) : (
+            <>
+              确定要删除选中的 <strong>{deleteConfirm?.count || 0}</strong>{' '}
+              个 OAuth 连接吗？
+            </>
+          )
+        }
+      />
     </div>
   );
 }

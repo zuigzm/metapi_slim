@@ -12,7 +12,9 @@ export type UpdateCenterConfig = {
   chartRef: string;
   imageRepository: string;
   githubReleasesEnabled: boolean;
-  dockerHubTagsEnabled: boolean;
+  githubReleaseRepo: string;   // GitHub 仓库地址，默认为 cita-777/metapi
+  domesticReleasesEnabled: boolean;
+  domesticReleaseRepo: string;  // 国内镜像仓库地址，如 xxx/mirrors/metapi
   defaultDeploySource: UpdateCenterVersionSource;
 };
 
@@ -27,7 +29,9 @@ export function getDefaultUpdateCenterConfig(): UpdateCenterConfig {
     chartRef: '',
     imageRepository: '1467078763/metapi',
     githubReleasesEnabled: true,
-    dockerHubTagsEnabled: true,
+    githubReleaseRepo: 'cita-777/metapi',
+    domesticReleasesEnabled: false,
+    domesticReleaseRepo: '',
     defaultDeploySource: 'github-release',
   };
 }
@@ -44,8 +48,8 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 export function normalizeUpdateCenterConfig(input: unknown): UpdateCenterConfig {
   const defaults = getDefaultUpdateCenterConfig();
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {};
-  const defaultDeploySource = record.defaultDeploySource === 'docker-hub-tag'
-    ? 'docker-hub-tag'
+  const defaultDeploySource = record.defaultDeploySource === 'domestic-release'
+    ? 'domestic-release'
     : 'github-release';
 
   return {
@@ -56,7 +60,9 @@ export function normalizeUpdateCenterConfig(input: unknown): UpdateCenterConfig 
     chartRef: normalizeString(record.chartRef, defaults.chartRef),
     imageRepository: normalizeString(record.imageRepository, defaults.imageRepository) || defaults.imageRepository,
     githubReleasesEnabled: normalizeBoolean(record.githubReleasesEnabled, defaults.githubReleasesEnabled),
-    dockerHubTagsEnabled: normalizeBoolean(record.dockerHubTagsEnabled, defaults.dockerHubTagsEnabled),
+    githubReleaseRepo: normalizeString(record.githubReleaseRepo, defaults.githubReleaseRepo) || defaults.githubReleaseRepo,
+    domesticReleasesEnabled: normalizeBoolean(record.domesticReleasesEnabled, defaults.domesticReleasesEnabled),
+    domesticReleaseRepo: normalizeString(record.domesticReleaseRepo, defaults.domesticReleaseRepo),
     defaultDeploySource,
   };
 }

@@ -11,7 +11,7 @@ export type UpdateHelperRuntimeLike = {
 };
 
 export type UpdateReminderCandidate = {
-  source: 'github-release' | 'docker-hub-tag';
+  source: 'github-release' | 'domestic-release';
   kind: 'new-version' | 'new-digest';
   candidateKey: string;
   displayVersion: string;
@@ -88,13 +88,13 @@ export function isSameImageTarget(
 }
 
 export function buildUpdateReminderCandidateKey(
-  source: 'github-release' | 'docker-hub-tag',
+  source: 'github-release' | 'domestic-release',
   candidate: { tagName?: string | null; digest?: string | null },
 ): string {
   const tagName = normalizeString(candidate.tagName);
   const digest = normalizeDigest(candidate.digest);
   if (!tagName) return '';
-  if (source === 'docker-hub-tag' && digest) {
+  if (source === 'domestic-release' && digest) {
     return `${source}:${tagName}@${digest}`;
   }
   return `${source}:${tagName}`;
@@ -104,11 +104,16 @@ export function resolveUpdateReminderCandidate(input: {
   currentVersion?: string | null;
   helper: UpdateHelperRuntimeLike | null | undefined;
   githubRelease: UpdateVersionCandidateLike | null | undefined;
-  dockerHubTag: UpdateVersionCandidateLike | null | undefined;
+  domesticRelease: UpdateVersionCandidateLike | null | undefined;
+  preferredSource?: 'github-release' | 'domestic-release';
 }): UpdateReminderCandidate | null {
-  const githubCandidateVersion = normalizeString(input.githubRelease?.normalizedVersion);
-  const githubTag = normalizeString(input.githubRelease?.tagName || githubCandidateVersion);
-  if (githubTag) {
+  const preferredDomestic = input.preferredSource === 'domestic-release';
+
+  // Helper to check GitHub release
+  const checkGithub = (): UpdateReminderCandidate | null => {
+    const githubCandidateVersion = normalizeString(input.githubRelease?.normalizedVersion);
+    const githubTag = normalizeString(input.githubRelease?.tagName || githubCandidateVersion);
+    if (!githubTag) return null;
     const githubTargetVersion = githubCandidateVersion || githubTag;
     const versionCompare = compareStableVersions(input.currentVersion, githubTargetVersion);
     const helperVersionCompare = compareStableVersions(input.helper?.imageTag, githubTargetVersion);
@@ -122,39 +127,58 @@ export function resolveUpdateReminderCandidate(input: {
         digest: null,
       };
     }
-  }
-
-  const dockerCandidateVersion = normalizeString(input.dockerHubTag?.normalizedVersion);
-  const dockerTag = normalizeString(input.dockerHubTag?.tagName || dockerCandidateVersion);
-  const dockerDigest = normalizeDigest(input.dockerHubTag?.digest);
-  if (!dockerTag) return null;
-
-  if (isSameImageTarget(input.helper, { tag: dockerTag, digest: dockerDigest })) {
     return null;
-  }
+  };
 
-  const dockerVersionCompare = compareStableVersions(input.currentVersion, dockerCandidateVersion || dockerTag);
-  if (dockerVersionCompare === -1) {
-    return {
-      source: 'docker-hub-tag',
-      kind: 'new-version',
-      candidateKey: buildUpdateReminderCandidateKey('docker-hub-tag', { tagName: dockerTag, digest: dockerDigest || null }),
-      displayVersion: normalizeString(input.dockerHubTag?.displayVersion || input.dockerHubTag?.normalizedVersion || dockerTag),
-      tagName: dockerTag,
-      digest: dockerDigest || null,
-    };
-  }
+  // Helper to check domestic release
+  const checkDomestic = (): UpdateReminderCandidate | null => {
+    const domesticCandidateVersion = normalizeString(input.domesticRelease?.normalizedVersion);
+    const domesticTag = normalizeString(input.domesticRelease?.tagName || domesticCandidateVersion);
+    const domesticDigest = normalizeDigest(input.domesticRelease?.digest);
+    if (!domesticTag) return null;
 
-  const helperDigest = normalizeDigest(input.helper?.imageDigest);
-  if (dockerDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, dockerTag) && helperDigest !== dockerDigest) {
-    return {
-      source: 'docker-hub-tag',
-      kind: 'new-digest',
-      candidateKey: buildUpdateReminderCandidateKey('docker-hub-tag', { tagName: dockerTag, digest: dockerDigest }),
-      displayVersion: normalizeString(input.dockerHubTag?.displayVersion || input.dockerHubTag?.normalizedVersion || dockerTag),
-      tagName: dockerTag,
-      digest: dockerDigest,
-    };
+    if (isSameImageTarget(input.helper, { tag: domesticTag, digest: domesticDigest })) {
+      return null;
+    }
+
+    const domesticVersionCompare = compareStableVersions(input.currentVersion, domesticCandidateVersion || domesticTag);
+    if (domesticVersionCompare === -1) {
+      return {
+        source: 'domestic-release',
+        kind: 'new-version',
+        candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest || null }),
+        displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+        tagName: domesticTag,
+        digest: domesticDigest || null,
+      };
+    }
+
+    const helperDigest = normalizeDigest(input.helper?.imageDigest);
+    if (domesticDigest && helperDigest && hasSameImageTag(input.helper?.imageTag, domesticTag) && helperDigest !== domesticDigest) {
+      return {
+        source: 'domestic-release',
+        kind: 'new-digest',
+        candidateKey: buildUpdateReminderCandidateKey('domestic-release', { tagName: domesticTag, digest: domesticDigest }),
+        displayVersion: normalizeString(input.domesticRelease?.displayVersion || input.domesticRelease?.normalizedVersion || domesticTag),
+        tagName: domesticTag,
+        digest: domesticDigest,
+      };
+    }
+    return null;
+  };
+
+  if (preferredDomestic) {
+    // When using domestic mirror, check domestic first then github
+    const domestic = checkDomestic();
+    if (domestic) return domestic;
+    const github = checkGithub();
+    if (github) return github;
+  } else {
+    // Default: check github first then domestic
+    const github = checkGithub();
+    if (github) return github;
+    const domestic = checkDomestic();
+    if (domestic) return domestic;
   }
 
   return null;

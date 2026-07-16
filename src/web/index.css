@@ -3034,28 +3034,28 @@ textarea {
 }
 
 .oauth-col-identity {
-  width: 28%;
-  min-width: 240px;
+  width: 15%;
+  min-width: 130px;
 }
 
 .oauth-col-site {
-  width: 18%;
-  min-width: 150px;
+  width: 15%;
+  min-width: 130px;
 }
 
 .oauth-col-status {
-  width: 20%;
-  min-width: 220px;
+  width: 18%;
+  min-width: 180px;
 }
 
 .oauth-col-quota {
-  width: 20%;
-  min-width: 190px;
+  width: 17%;
+  min-width: 160px;
 }
 
 .oauth-col-proxy {
-  width: 14%;
-  min-width: 126px;
+  width: 12%;
+  min-width: 110px;
 }
 
 .oauth-table-actions-col {
@@ -3065,14 +3065,14 @@ textarea {
 }
 
 .oauth-actions-cell {
-  min-width: 180px;
+  min-width: 200px;
   white-space: normal !important;
 }
 
 .oauth-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
   gap: 2px 4px;
   width: 100%;
 }
@@ -3096,6 +3096,49 @@ textarea {
   padding: 0;
   font-size: 11px;
   line-height: 1.2;
+}
+
+/* Mobile pagination for OAuth connection list */
+.oauth-mobile-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.oauth-mobile-page-info {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Antd Table overrides for OAuth */
+.oauth-table.ant-table-wrapper .ant-table-thead > tr > th {
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.oauth-table.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding: 8px 10px;
+  vertical-align: top;
+  line-height: 1.3;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.oauth-table.ant-table-wrapper .ant-table-tbody > tr > td.oauth-actions-cell {
+  white-space: normal;
+}
+
+.oauth-table.ant-table-wrapper .ant-table-thead > tr > th.oauth-actions-cell {
+  text-align: right;
+  min-width: 200px;
+  width: auto;
 }
 
 .oauth-cell-stack {
@@ -4248,6 +4291,15 @@ textarea {
   pointer-events: none;
 }
 
+.modal-fixed-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 20px 24px 0;
+}
+
 .modal-content {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
@@ -4257,6 +4309,8 @@ textarea {
   max-height: calc(100vh - 32px);
   margin: auto;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   animation: scale-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -4265,7 +4319,6 @@ textarea {
 }
 
 .modal-header {
-  padding: 20px 24px 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -4312,11 +4365,14 @@ textarea {
 }
 
 .modal-footer {
+  position: sticky;
+  bottom: 0;
   padding: 0 24px 20px;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+  background: var(--color-bg-card);
 }
 
 .site-created-summary,

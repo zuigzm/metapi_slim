@@ -49,7 +49,9 @@ const accountHealthRefreshPayloadSchema = z.object({
 }).passthrough();
 
 const accountLoginPayloadSchema = z.object({
-  siteId: z.number().int().positive(),
+  siteUrl: z.string().url(),
+  siteName: z.string().optional(),
+  platform: z.string().optional(),
   username: z.string(),
   password: z.string(),
 }).passthrough();

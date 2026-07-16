@@ -7,8 +7,7 @@ import type { UpdateCenterVersionCandidate, UpdateCenterVersionSource } from './
 
 export type UpdateCenterStatusSnapshot = {
   githubRelease: UpdateCenterVersionCandidate | null;
-  dockerHubTag: UpdateCenterVersionCandidate | null;
-  dockerHubRecentTags: UpdateCenterVersionCandidate[];
+  domesticRelease: UpdateCenterVersionCandidate | null;
   helper: UpdateCenterHelperStatus | null;
 };
 
@@ -45,7 +44,7 @@ function normalizeNullableString(value: unknown): string | null {
 }
 
 function normalizeNullableSource(value: unknown): UpdateCenterVersionSource | null {
-  return value === 'docker-hub-tag' || value === 'github-release' ? value : null;
+  return value === 'domestic-release' || value === 'github-release' ? value : null;
 }
 
 function normalizeVersionCandidate(input: unknown): UpdateCenterVersionCandidate | null {
@@ -116,8 +115,7 @@ function normalizeStatusSnapshot(input: unknown): UpdateCenterStatusSnapshot | n
   const record = input as Record<string, unknown>;
   return {
     githubRelease: normalizeVersionCandidate(record.githubRelease),
-    dockerHubTag: normalizeVersionCandidate(record.dockerHubTag),
-    dockerHubRecentTags: normalizeVersionCandidates(record.dockerHubRecentTags),
+    domesticRelease: normalizeVersionCandidate(record.domesticRelease),
     helper: normalizeHelperSnapshot(record.helper),
   };
 }
