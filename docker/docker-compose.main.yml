@@ -1,15 +1,10 @@
 services:
   metapi:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-
+    image: 1467078763/metapi:latest
     ports:
       - "127.0.0.1:4000:4000"
-
     volumes:
       - ./data:/app/data
-
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:?AUTH_TOKEN is required}
       PROXY_TOKEN: ${PROXY_TOKEN:?PROXY_TOKEN is required}
@@ -18,5 +13,4 @@ services:
       PORT: ${PORT:-4000}
       DATA_DIR: /app/data
       TZ: ${TZ:-Asia/Shanghai}
-
     restart: unless-stopped
